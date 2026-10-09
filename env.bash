@@ -113,7 +113,7 @@ this_is_not_wsl ()
 #     mac    smb://<ip>/<share><相对路径>        macOS Finder
 #     win    \\<ip>\<share><相对路径>            UNC：资源管理器 / CMD / PowerShell
 #     scp    <user>@<ip>:<绝对路径>             scp / rsync
-#     wsl    wslpath -w <路径> 的结果           只有 WSL 上有意义；别处给 '-'
+#     wsl    wslpath -w <路径> 的结果           **只有 WSL 上有这一行**；非 WSL 整行不显示
 #     linux  //<ip>/<share><相对路径>           mount -t cifs / smbclient
 #
 #   没设 $WIN_IP  → 靠 IP 的那四行第二列写「请设置 WIN_IP」，**不报错**；
@@ -152,24 +152,23 @@ _win_smb_shares ()
     ' "$1"
 }
 
-# 五行的第二列（<=> 是占位符，换成「请设置 WIN_IP」或 '-'）。顺序固定：mac/win/scp/wsl/linux。
-# $1 = 目标绝对路径，$2 = wsl 行已经算好的值
+# 各行的第二列（<=> 是占位符，换成「请设置 WIN_IP」或 '-'）。顺序固定：mac/win/scp/wsl/linux。
+# $1 = 目标绝对路径，$2 = wsl 行已经算好的值；**$2 为空 = 非 WSL，wsl 那一行整行不输出**
 _win_rows ()
 {
     local target=$1 wslval=$2 ip conf shares line name spath sraw rel best best_rel best_len
-    local mac_col win_col scp_col wsl_col linux_col
+    local mac_col win_col scp_col linux_col
     ip="${WIN_IP:-}"
     if [ -z "${ip}" ]; then
         mac_col='请设置 WIN_IP'; win_col='请设置 WIN_IP'; scp_col='请设置 WIN_IP'
-        wsl_col='-'; linux_col='请设置 WIN_IP'
-        [ "${wslval}" = '-' ] || wsl_col="${wslval}"
-        printf 'mac|%s\nwin|%s\nscp|%s\nwsl|%s\nlinux|%s\n' \
-            "${mac_col}" "${win_col}" "${scp_col}" "${wsl_col}" "${linux_col}"
+        linux_col='请设置 WIN_IP'
+        printf 'mac|%s\nwin|%s\nscp|%s\n' "${mac_col}" "${win_col}" "${scp_col}"
+        [ -z "${wslval}" ] || printf 'wsl|%s\n' "${wslval}"
+        printf 'linux|%s\n' "${linux_col}"
         return 0
     fi
-    mac_col='-'; win_col='-'; wsl_col='-'; linux_col='-'
+    mac_col='-'; win_col='-'; linux_col='-'
     scp_col="$(whoami)@${ip}:${target}"
-    [ "${wslval}" = '-' ] || wsl_col="${wslval}"
     conf="${WTOOL_SMB_CONF:-/etc/samba/smb.conf}"
     best=""; best_rel=""; best_len=0
     if [ -r "${conf}" ]; then
@@ -203,8 +202,9 @@ EOF
         win_col=$(printf '%s' "\\\\${ip}\\${best}${_unc}")
         linux_col="//${ip}/${best}${best_rel}"
     fi
-    printf 'mac|%s\nwin|%s\nscp|%s\nwsl|%s\nlinux|%s\n' \
-        "${mac_col}" "${win_col}" "${scp_col}" "${wsl_col}" "${linux_col}"
+    printf 'mac|%s\nwin|%s\nscp|%s\n' "${mac_col}" "${win_col}" "${scp_col}"
+    [ -z "${wslval}" ] || printf 'wsl|%s\n' "${wslval}"
+    printf 'linux|%s\n' "${linux_col}"
     return 0
 }
 
@@ -225,15 +225,16 @@ win ()
         return 2
         ;;
     esac
-    local target wslval='-'
+    local target wslval=''
     target=$(realpath -m -- "${1:-$PWD}" 2>/dev/null)
     [ -n "${target}" ] || target="${1:-$PWD}"
-    # wsl 行：只有 WSL 上有意义（wslpath 不在就保持 '-'，不报错）
+    # wsl 行：**只有 WSL 上有这一行**（非 WSL 整行不显示 —— 留个 '-' 会让人以为"本该有路"）；
+    # wslpath 在但算不出结果 → 行还在、值是 '-'，照样不报错
     if this_is_wsl && [ -e /usr/bin/wslpath ]; then
         wslval=$(wslpath -w "${1:-.}" 2>/dev/null)
         [ -n "${wslval}" ] || wslval='-'
     fi
-    # 表头 + 五行；第一列宽按最长的 'linux'(5) 算，printf 定宽对齐，全表不上色。
+    # 表头 + 各行（非 WSL 没有 wsl 行）；第一列宽按最长的 'linux'(5) 算，printf 定宽对齐，全表不上色。
     # 表头用 ASCII：zsh 的 %-5s 按**显示宽度**补（中文算 2 列）、bash 按字节补，
     # 用中文表头两个 shell 的字节就不一样了（"逐字等价"的断言会挂）。
     printf '%-5s  %s\n' usage path

@@ -723,3 +723,46 @@ zsh  -c "export WTOOL_PROJECT_DIR=/x; cd /var/log; . $R/env.zsh;  _up_to_have_di
   文件头写了时间、命令、参数与夹具说明），覆盖情形 ①②③④。
 - **没验到的**：真机 samba（没装 samba 的机器上跑的，全部用假 `smb.conf` 注入）；
   WSL 上 `wslpath` 的真输出按本机实际情况断言（本机就是 WSL，跑出来的那行是真实的）。
+- **⚠️ 订正（2026-10-09 第 4 轮）**：非 WSL 时 `wsl` 行**整行不显示**了（不再是 `-`），
+  测试条数 529 → **537**；这一条里"别处给 `-`"和"529 通过"只代表当时的状态 —— 见文件末尾那一条。
+
+## ✅ 2026-10-09（第 4 轮）：`win` 在非 WSL 上不显示 `wsl` 行（用户反馈）
+
+- **需求**（用户原话）："win 表格在没配 `WIN_IP` 时的 wsl 行要不要也写'请设置 WIN_IP'（现在给真实路径）。
+  **wsl 的话，如果是在非 wsl 机器上，就不显示那一行**。win 命令如果在 wsl 机器上，WIN_IP 是不是
+  都可以默认配置成 localhost？不过 wsl 那一行在 wsl 显示的也应该是 wslpath 之类的，和 ip 不沾边，
+  所以也没事儿"。
+- **改法**（`env.zsh` + `env.bash` 同改，两份逐字等价，除 `[[ ]]` / `[ ]` 这类必须差异）：
+  - **非 WSL 机器上 `wsl` 那一行整行不输出**（2026-10-09 之前给 `-`）。实现只动"行从哪来"这一处：
+    `win` 里 `wslval` 的初值由 `'-'` 改成**空串**，只有 `this_is_wsl` 为真且 `/usr/bin/wslpath`
+    在时才去算 `wslpath -w`（算不出结果仍记 `'-'`，行还在）；`_win_rows` 拿**空串**当"没有这一行"，
+    打印顺序改成 `mac` / `win` / `scp` →（非空才打）`wsl` → `linux`，其余逻辑一行没动。
+  - **WSL 上行为不变**：照旧显示 `wslpath -w <路径>` 的结果（和 `WIN_IP`、samba 都不沾边）。
+  - **`WIN_IP` 不加"默认 localhost"**（用户这一问的答复）：那四行写的是**别的机器访问本机**用的地址，
+    `127.0.0.1` 从 Windows / mac 那边指不到本机（WSL2 是 NAT 虚拟机，`\\127.0.0.1\share` 找的是
+    **Windows 本机**的共享）—— 默认成 localhost 只会给出一个**假地址**，比留空更坏。
+    **没配 `WIN_IP` 时那四行照旧写「请设置 WIN_IP」**，一个字没改。理由写进 `README.md`
+    （`win` 那一节里 6 行说明 + 排错表一行），**代码里没有任何默认值**。
+- **测试**：`tests/env_test.sh` 的 win 段跟着改（同一张表跑两个 shell），**537 通过 / 0 失败**
+  （本机 WSL + rg + fd；第 3 轮是 529，每 shell +4 条）：
+  - **非 WSL（桩 `this_is_wsl () { return 1; }`）三条一起钉"没有那一行"**：整表逐行比对
+    （新助手 `wtbl4` = 表头 + mac/win/scp/linux）、`grep -c '^wsl'` = 0、行数 = 5；
+    没 `WIN_IP` 的那张表也一起改成四行；
+  - **WSL 真机**：整表逐行比对（`wtbl` 五行，`wsl` = `wslpath` 的结果）+ `grep -c '^wsl'` = 1
+    + 第 5 行就是 `wslpath -w` 的真输出；`wsl` 行那几条包在 `if [ -e /usr/bin/wslpath ]` 里
+    （`win` 里那句 `[ -e /usr/bin/wslpath ]` 桩不掉），**非 WSL 机器上自动少跑那几条**。
+- **判据（可原地重跑）**：`bash tests/env_test.sh` → 末行 `537 通过, 0 失败`；
+  `WIN_IP=10.1.2.3 ... win | grep -c '^wsl'` 在桩成非 WSL 时给 `0`、在真 WSL 上给 `1`
+  （`/tmp/win-demo2.txt` 末尾两段就是这个计数）。
+- **反向验证**（本仓惯例）：把**改后的** `tests/env_test.sh` 拷进 `git archive HEAD` 解出来的
+  旧代码副本里跑 → **525 通过 / 12 失败**，12 条全是新钉的那几条"没有 `wsl` 行"
+  （两个 shell 各 6 条：②整表 / ②bis `grep -c` / ②ter 行数 / 没 `WIN_IP` 的四行表 /
+  读不到 smb.conf / 没有 share 匹配）—— 它们确实咬得住这次改动，不是恒真的断言。
+- **显示效果**：`/tmp/win-demo2.txt`（生成脚本 `/tmp/gen-win-demo2.sh`，文件头写了时间、主机、
+  两个 shell 的版本、夹具路径与假 `smb.conf` 内容）：**情形 A 非 WSL（桩）× 情形 B WSL（真机）**，
+  每种又分"有 `WIN_IP` + 有 samba" / "没配 `WIN_IP`"，bash 与 zsh 各跑一遍（8 张表），
+  末尾附"两个 shell 逐字相同"的 `cmp` 结论、`this_is_wsl` 真值、`wslpath -w` 真值与
+  `grep -c '^wsl'` 的计数对照（非 WSL 0 条 / WSL 1 条）。
+- **没验到的**：非 WSL 机器的**真机**跑（那一段是桩出来的；同理 ① 里 WSL 那几条在本机是真机验的，
+  但"非 WSL 真机"没有第二台机器可验，桩与真机只差 `this_is_wsl` 的返回值这一处）；
+  真机 samba 照旧没验（还是假 `smb.conf` 注入）。

@@ -67,7 +67,7 @@
 | `pdd` | `cd` 回上面那个文件记的目录（`tr -d ' '`） | 同 `cd` |
 | `this_is_wsl` | `[[ -e /usr/bin/wslpath ]]` | 0/1 |
 | `this_is_not_wsl` | 与 `this_is_wsl` 相反 | 0/1 |
-| `win [路径]` | 打一张两列表格（`mac` / `win` / `scp` / `wsl` / `linux` × 可用路径）；**没有选项**（见 4.4） | 0 / 2（`-` 开头的参数） |
+| `win [路径]` | 打一张两列表格（`mac` / `win` / `scp` / `linux` × 可用路径；**WSL 上多一行 `wsl`**，非 WSL 上那一行整行不显示）；**没有选项**（见 4.4） | 0 / 2（`-` 开头的参数） |
 | `start <程序>` | 非 WSL 打 `only wsl support this` 返回 1；WSL 上自己算 `wslpath -w "$PWD"`（失败退回 `$PWD`），再 `powershell.exe -Command "Set-Location -Path \"<那个路径>\"; Start-Process $1"` | 0 / 1 |
 | `proxy_on [IP] [端口]` | 开代理：取值顺序 **参数 → `$PROXY_IP`/`$PROXY_PORT` → 交互式询问**（非交互终端且没值 → rc=2、不挂住）；导出 `http_proxy`/`https_proxy`/`all_proxy` 及其大写共 6 个；`no_proxy` 采取"存原值再追加"（见 4.6） | 0 / 2 |
 | `proxy_off` | 关代理：unset 那 6 个；把 `no_proxy`/`NO_PROXY` **还原**成 `proxy_on` 之前的值；保留 `PROXY_IP`/`PROXY_PORT`（同 shell 再开不用重问） | 0 |
@@ -123,25 +123,30 @@ done
 两种都 **rc=2、stdout 为空**。**任何以 `-` 开头的参数都不会流到 `wslpath`** ——
 旧版把 `$1` 透传给 `wslpath`，`win -m` 因此打出 `wslpath` 的 `Usage:`（用户截图里的那个 bug）。
 
-**表格**：表头 `usage  path` + 五行，`printf '%-5s  %s\n'` 定宽（第一列宽按最长的 `linux`=5），
-全表无颜色、无附加说明。表头是 **ASCII** —— `%-5s` 在 zsh 里按显示宽度补、在 bash 里按字节补，
-用中文表头两个 shell 的输出就不是逐字相同了。
+**表格**：表头 `usage  path` + **四行（非 WSL）/ 五行（WSL）**，`printf '%-5s  %s\n'` 定宽
+（第一列宽按最长的 `linux`=5），全表无颜色、无附加说明。表头是 **ASCII** —— `%-5s` 在 zsh 里按
+显示宽度补、在 bash 里按字节补，用中文表头两个 shell 的输出就不是逐字相同了。
+
+**`wsl` 那一行只有 WSL 上有**（2026-10-09 用户要求）：非 WSL 机器上**整行不输出**，不是给 `-`
+（给 `-` 看起来像"本来就该有路、只是没配"）。行在不在由 `win` 决定 —— 它在 WSL 上把
+`wslpath -w <参数>` 算好传下去，非 WSL 传**空串**；`_win_rows` 见空串就跳过那一行。
 
 | 行 | 第二列 | 算它的地方 |
 |---|---|---|
 | `mac` | `smb://<ip>/<share><rel>` | samba 那一路 |
 | `win` | `\\<ip>\<share><rel>`（`/`→`\` 用 `printf ... \| sed`） | 同上 |
 | `scp` | `<whoami>@<ip>:<target>` | **不依赖 samba** |
-| `wsl` | `wslpath -w <参数>` 的结果；`this_is_wsl` 为假或 wslpath 不可用 → `-` | `win` 里算好传给 `_win_rows` |
+| `wsl`（**非 WSL 上不存在**） | `wslpath -w <参数>` 的结果 | `win` 里算好传给 `_win_rows`；`wslpath` 在但算不出结果 → 值 `-`（行还在） |
 | `linux` | `//<ip>/<share><rel>` | samba 那一路 |
 
-`_win_rows <目标绝对路径> <wsl 行>` 负责五行第二列，按 `|` 分隔打成
-`mac|…` / `win|…` / …，`win` 再用 `while IFS='|' read -r _k _v` 摆进表格：
+`_win_rows <目标绝对路径> <wsl 行>` 负责各行第二列，按 `|` 分隔打成
+`mac|…` / `win|…` / …，`win` 再用 `while IFS='|' read -r _k _v` 摆进表格；
+**`$2` 为空 = 非 WSL，wsl 那一行整行不输出**（其余四行的顺序不变）：
 
 1. `ip` = `$WIN_IP`（**只读环境变量，不探测 `ip addr`**，2026-10-07 起；
    `_win_ip` 仍然在，`win` 不用它 —— 直接读变量就不会有 stderr）；
 2. **`ip` 为空** → `mac` / `win` / `scp` / `linux` 四行第二列 = `请设置 WIN_IP`
-   （用户原话），`wsl` 行照旧（它不靠 IP）；**stderr 一个字节都不打**，rc=0；
+   （用户原话），`wsl` 行照旧（它不靠 IP；非 WSL 上本来就没这一行）；**stderr 一个字节都不打**，rc=0；
 3. 有 `ip` → `scp` 行照给；`conf` = `${WTOOL_SMB_CONF:-/etc/samba/smb.conf}`；
 4. `_win_smb_shares` 用 awk 把 `[share]` 段与段内 `path =` 抽成 `share|path`
    （跳过 `#` / `;` 行，去首尾空白与首尾引号）；
@@ -560,21 +565,26 @@ done
   上下文行一个转义都没有（逐字节）、
   ⑤ `$T/src7` 上三后端 `cmp`（`-A1 -B1` / 跨文件 `-A1` / `-t bp -C2` 各一条）+
   着色版本 auto / rg / fd 与 find 逐字一致；
-- **win 的表**（2026-10-09 改表格之后，两个 shell 各 15 条）：夹具是 `$T/winws`
-  （假工作区 + 假 `smb.conf` + 假 `wslpath`）。断言：①五行齐全（`mac`=`smb://`、
-  `win`=UNC、`linux`=`//`、`scp`=`user@ip:绝对路径`）、②非 WSL 时 `wsl` 行是 `-`、
-  ③没 `WIN_IP` → 四行 `请设置 WIN_IP` + **stderr 为空** + rc=0、
+- **win 的表**（2026-10-09 第 4 轮：非 WSL 不显示 `wsl` 行；WSL 上两个 shell 各 19 条、
+  非 WSL 机器上各 17 条 —— `wsl` 行那两条只在 WSL 上跑得到）：夹具是 `$T/winws`
+  （假工作区 + 假 `smb.conf` + 假 `wslpath`）。断言：①**WSL 上五行齐全**（`mac`=`smb://`、
+  `win`=UNC、`linux`=`//`、`scp`=`user@ip:绝对路径`、`wsl`=`wslpath` 的结果，
+  再加 `grep -c '^wsl'` = 1）、②**非 WSL 上整表逐行比对只有四行**（`wtbl4`）+ `grep -c '^wsl'` = 0
+  + 行数 = 5（表头 + 4）—— 三条一起钉"那一行整行不显示"、
+  ③没 `WIN_IP` → 靠 IP 的四行 `请设置 WIN_IP` + **stderr 为空** + rc=0
+  （WSL 上 `wsl` 行照给，它不靠 IP）、
   ④读不到 `smb.conf` / 没有 share 匹配 → `mac`/`win`/`linux` 是 `-` + **stderr 为空**、
   ⑤最长前缀 + 路径分隔符对齐（`ws/ab` 命中 `[ws]` 而不是被更短的 `[proj]` 类前缀吃掉）、
   ⑥`win <路径>` 对给定路径生效（与 `cd` 过去再 `win` 逐字相同）、
   ⑦`win -m` **不碰 `wslpath`**（假 `wslpath` 没被调用 + stdout 里 `grep -ci usage|wslpath` = 0）、
-  ⑧`win -h` / `--server` 只打用法、rc=2、stdout 空。**没有"四行/五行的行数"这类脆弱断言**，
-  整张表用 `wtbl` 里的同一个 `printf '%-5s  %s\n'` 拼出来逐字比 —— 两个 shell 自然一致；
+  ⑧`win -h` / `--server` 只打用法、rc=2、stdout 空。整张表用 `wtbl` / `wtbl4` 里的同一个
+  `printf '%-5s  %s\n'` 拼出来逐字比 —— 两个 shell 自然一致；
 - **反向验证**（2026-10-07 实测）：这一批新用例拿 `git show HEAD:env.zsh|env.bash`
   （改动前那份）跑，**150 条 FAIL**（当时新实现 499 通过 / 2 失败，那 2 条是当时本机
   `win | head -1` 的破管道老毛病 —— 2026-10-09 改成表格后那两个 `head` 流水线不存在了）；
 - 后端相关的用例按"本机有没有那个可执行文件"跳过，所以条数随环境变：
-  同一个夹具下实测 **2026-10-09（win 改成表格之后）rg+fd 都在 = 529 通过 / 0 失败**
+  同一个夹具下实测 **2026-10-09（非 WSL 不显示 `wsl` 行之后）rg+fd 都在 = 537 通过 / 0 失败**
   （两个 shell 的用例表除了"start 的补全注册"那 3 条之外逐字相同）；
+  同一天早先（win 改成表格之后）是 529 通过 / 0 失败；
   2026-10-07（加完上下文与新选项之后）是 499 通过 / 2 失败；
   容器 `wrg-test` 里（非 WSL、mawk）是 **497 通过 / 0 失败**（**以脚本最后一行输出为准**）。

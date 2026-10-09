@@ -53,7 +53,7 @@
 | `pdd` | `cd` 回"上次 `pwd` 记下的路径" | `pdd` | `0`；目录没了时 `1`（`cd` 的报错） |
 | `this_is_wsl` | 本机是不是 WSL | `this_is_wsl` | `0` 是；`1` 不是 |
 | `this_is_not_wsl` | 与上一条正好相反 | `this_is_not_wsl` | `0` 不是；`1` 是 |
-| `win` | 把目录翻成 mac / win / scp / wsl / linux 五方各自能用的路径（一张两列表格） | `win` / `win <路径>` | `0` 正常（没设 `WIN_IP`、没配 samba 也是 `0`）；`2` 参数以 `-` 开头 |
+| `win` | 把目录翻成 mac / win / scp / linux 各自能用的路径（**WSL 上多一行 `wsl`**；一张两列表格） | `win` / `win <路径>` | `0` 正常（没设 `WIN_IP`、没配 samba 也是 `0`）；`2` 参数以 `-` 开头 |
 | `proxy_on` | 开代理：导出 6 个代理变量、追加 `no_proxy` | `proxy_on [IP] [端口]` | `0`；`2` 没值且不是交互终端、或端口不是数字 |
 | `proxy_off` | 关代理：清 6 个变量、**还原** `no_proxy` | `proxy_off` | `0` |
 | `start` | 在 Windows 侧 `Start-Process` 打开程序（**只 WSL 有效**） | `start <程序>` | `1` 非 WSL；WSL 上返回 `powershell.exe` 的码 |
@@ -235,15 +235,21 @@ win <路径>       # 用给定路径（相对路径按当前目录算）
 `wslpath`**（以前 `win -m` 会把 `-m` 透传给 `wslpath`，于是屏幕上出现 `wslpath` 的
 `Usage:`；现在不会了）。
 
-第一列固定五个"使用方"，第二列是它对那个使用方可用的路径：
+第一列是"使用方"，第二列是它对那个使用方可用的路径。**行数看机器**：
+
+- **非 WSL 机器**（服务器 / 普通 Linux / macOS）：**四行** —— `mac` / `win` / `scp` / `linux`，
+  **没有 `wsl` 行**（那一行的值由 `wslpath` 算，非 WSL 上没有这个东西；2026-10-09 起**整行不显示**，
+  以前给个 `-`，看起来像"本来就该有路，只是没配"）。
+- **WSL 上**：四行之外**多一行 `wsl`**，值是 `wslpath -w <路径>` 的结果。
 
 ```
-usage  path
-mac    smb://10.1.2.3/proj/sub
-win    \\10.1.2.3\proj\sub
-scp    mindul@10.1.2.3:/srv/proj/sub
-wsl    \\wsl.localhost\Ubuntu\srv\proj\sub
-linux  //10.1.2.3/proj/sub
+# 非 WSL（服务器上，设了 WIN_IP 和 samba）        # WSL 上（多一行 wsl）
+usage  path                                      usage  path
+mac    smb://10.1.2.3/proj/sub                    mac    smb://10.1.2.3/proj/sub
+win    \\10.1.2.3\proj\sub                        win    \\10.1.2.3\proj\sub
+scp    mindul@10.1.2.3:/srv/proj/sub              scp    mindul@10.1.2.3:/srv/proj/sub
+linux  //10.1.2.3/proj/sub                        wsl    \\wsl.localhost\Ubuntu\srv\proj\sub
+                                                  linux  //10.1.2.3/proj/sub
 ```
 
 | 第一列 | 第二列 | 给谁用 | 怎么算出来的 |
@@ -251,7 +257,7 @@ linux  //10.1.2.3/proj/sub
 | `mac` | `smb://<ip>/<share><相对路径>` | macOS Finder（粘进"前往 → 连接服务器"） | samba share（最长前缀匹配，见下） |
 | `win` | `\\<ip>\<share><相对路径>` | Windows：资源管理器地址栏 / CMD / PowerShell（UNC，分隔符换成 `\`） | 同上 |
 | `scp` | `<user>@<ip>:<绝对路径>` | `scp` / `rsync` | `whoami` + `realpath -m` 过的目标路径；**不依赖 samba** |
-| `wsl` | `wslpath -w <路径>` 的结果 | WSL 里指同一个目录的 Windows 路径 | 调 `wslpath`；**只有 WSL 上有意义**，别处给 `-` |
+| `wsl`（**只有 WSL 上有这一行**） | `wslpath -w <路径>` 的结果 | WSL 里指同一个目录的 Windows 路径（走 WSL 自己的共享通道） | 调 `wslpath`；**不靠 `WIN_IP`、也不靠 samba** |
 | `linux` | `//<ip>/<share><相对路径>` | Linux：`mount -t cifs //srv/share /mnt/x`、`smbclient //srv/share` | 同 samba share 那一路 |
 
 列宽按第一列最长的 `linux`（5 列）算，`printf` 定宽对齐；**全表不上色**，
@@ -260,7 +266,7 @@ linux  //10.1.2.3/proj/sub
 - `<ip>`：**必须来自环境变量 `WIN_IP`** —— 本命令**不做 `ip addr` 探测**（服务器上探到的
   常常是内网/VPC 地址，猜错比不猜更坏）。**没设时不报错**：靠 IP 的那四行
   （`mac` / `win` / `scp` / `linux`）第二列直接写 `请设置 WIN_IP`；
-  `wsl` 行不受影响（它不靠 IP），在 WSL 上照样给路径、别处给 `-`。
+  `wsl` 行不受影响（它不靠 IP），在 WSL 上照样给路径、非 WSL 上本来就没那一行。
 - samba：`WTOOL_SMB_CONF` 指定配置路径（默认 `/etc/samba/smb.conf`）。`[share]` 段 +
   段里的 `path =`，**最长前缀匹配**目标目录（按路径分隔符对齐：`path = /srv/share`
   不会被 `/srv/share2` 命中），拼上目标目录相对 share 的那段。
@@ -268,8 +274,18 @@ linux  //10.1.2.3/proj/sub
   （"没有 samba 自然不支持"）；`scp` 行照给。
 - 段名后的 `path =` 认大小写、去首尾空白、去首尾引号；`#` / `;` 开头的行跳过。
 
+> **为什么不给 `WIN_IP` 默认成 `127.0.0.1` / `localhost`？** 那个地址从别的机器看是**它自己**：
+> WSL2 是 NAT 虚拟机，`127.0.0.1` 在 WSL 里指 WSL 自己；Windows 上开 `\\127.0.0.1\share`
+> 找的是 **Windows 本机**的共享，永远指不到 WSL 那台 —— 默认它只会给出**假地址**，比留空更坏。
+> 填什么取决于拓扑：① 只给**本机 Windows** 看 → 填 WSL 那台的地址（或者不用 SMB，直接用
+> `wsl` 那一行的 `\\wsl.localhost\<发行版>`，它走 WSL 的共享通道、不靠 TCP/SMB）；
+> ② 要让**同一局域网里的其它机器**访问 → 必须填 **Windows 的局域网 IP** 并在 Windows 侧做
+> 端口转发（典型 `netsh interface portproxy add v4tov4 listenport=445 connectaddress=<WSL 的 IP>`
+> + 防火墙放行），因为 **WSL2 的 `172.x` 在 NAT 内网里，局域网其它机器路由不到**。
+> 所以 `win` **不替你猜**：没配就写 `请设置 WIN_IP`。
+
 ```sh
-# 本机（WSL 上，有 wslpath；设了 WIN_IP 与 samba）
+# 本机（WSL 上，有 wslpath；设了 WIN_IP 与 samba）—— 五行
 WIN_IP=192.168.0.10 win
 usage  path
 mac    smb://192.168.0.10/proj/sub
@@ -278,12 +294,11 @@ scp    mindul@192.168.0.10:/srv/proj/sub
 wsl    \\wsl.localhost\Ubuntu\srv\proj\sub
 linux  //192.168.0.10/proj/sub
 
-# 服务器上（没有 wslpath），且这台机器没配 samba
+# 服务器上（没有 wslpath），且这台机器没配 samba —— **四行，没有 wsl 行**
 usage  path
 mac    -
 win    -
 scp    mindul@192.168.0.10:/srv/proj/sub
-wsl    -
 linux  -
 ```
 
@@ -298,8 +313,10 @@ T=$(mktemp -d); mkdir -p "$T/src/proj/sub"; printf '[proj]\n  path = %s/src/proj
 # mac    smb://10.1.2.3/proj/sub
 # win    \\10.1.2.3\proj\sub
 # scp    <你>@10.1.2.3:<$T>/src/proj/sub
-# wsl    -
 # linux  //10.1.2.3/proj/sub
+# ↑ 四行收尾：非 WSL 的表里**没有 wsl 行**
+#   在 WSL 机器上把 this_is_wsl 那行删掉再跑，就会多出一行
+#   wsl    \\wsl.localhost\<发行版>\...
 ```
 
 **退出码**：正常一律 `0` —— **没设 `WIN_IP`、没配 samba 都不算错误**（表里写占位符或 `-`，
@@ -314,7 +331,8 @@ $ echo $?
 ```
 
 **依赖**：`$WIN_IP`（必须自己设）、`$WTOOL_SMB_CONF`（默认 `/etc/samba/smb.conf`）、
-`realpath` / `whoami` / `sed` / `awk`；`wsl` 那一行还要 `this_is_wsl` 为真且 `wslpath` 可用。
+`realpath` / `whoami` / `sed` / `awk`；`wsl` 那一行还要 `this_is_wsl` 为真且 `wslpath` 可用 ——
+**非 WSL 上这一行整行不显示**（不是给 `-`）。
 
 #### `start <程序>` —— 在 Windows 侧打开（只 WSL 有效）
 
@@ -622,7 +640,8 @@ zsh 版用 `${var:h}` 取父目录，bash 版用 `${var%/*}` + `case`。
 | `start` 打印 `only wsl support this` 并返回 1 | 不在 WSL 上（没有 `/usr/bin/wslpath`）；`start` 本来就是给 WSL 用的 |
 | `start <TAB>` 不补路径 | 看 shell 里有没有注册：bash `complete -p start`、zsh `print ${_comps[start]}`（应打 `_files`）/ `compctl -L start`（应打 `compctl -f start`）；都没有就是项目没装或没重开 shell |
 | `win` 表里 `mac` / `win` / `linux` 是 `-` | 这台机器没装/没配 samba（或当前目录不在任何 share 的 `path` 下面）。**这不报错**：没有 samba 自然不支持。要这三行就给 samba 配上 `[share]` + `path =`，或临时 `WTOOL_SMB_CONF=<别的文件>`；`scp` 行照样能用 |
-| `win` 表里四行写 `请设置 WIN_IP` | `WIN_IP` 没设。在 `.bashrc` / `.zshrc` 里 `export WIN_IP=<本机对外的地址>`（不探测是有意的：服务器上 `ip addr` 给的多半是内网地址）。`wsl` 行不受影响，它不靠 IP |
+| `win` 表里四行写 `请设置 WIN_IP` | `WIN_IP` 没设。在 `.bashrc` / `.zshrc` 里 `export WIN_IP=<本机对外的地址>`（不探测是有意的：服务器上 `ip addr` 给的多半是内网地址；**也不默认成 `127.0.0.1`**，理由见上面 `win` 那一节）。`wsl` 行不受影响，它不靠 IP |
+| `win` 表里**没有 `wsl` 行** | 这台机器不是 WSL（`this_is_wsl` 看的是 `/usr/bin/wslpath` 在不在）—— 那一行只在 WSL 上存在。想自己确认：`this_is_wsl; echo $?` 给 `1` 就是非 WSL；在 WSL 上给 `0` 且 `wslpath -w .` 能跑通，那一行就在 |
 | `win -m` / `win -s` 返回 2、提示"没有选项" | 这些选项 2026-10-09 已删除。`win` 只接受**可选的路径参数**：`win` 或 `win <路径>`。以前 `-m` 会被漏给 `wslpath`（屏幕上出现 `wslpath` 的 `Usage:`），现在不会 |
 | `win` 的 `scp` 行里有我没见过的路径 | 那是 `realpath -m` 过的目标路径（默认当前目录）。要别的目录就 `win <路径>`；相对路径按当前目录算 |
 | `wrg: 当前目录树下没有 Android.bp / Android.mk / Makefile`（返回码 1） | 站错目录了（`wrg` 只看当前目录往下）；`cd` 到源码树根部再跑。用 rg / fd 时它们跳过的目录（`.repo/`、`out/`）里即使有也不算。只有 `Makefile.am` / `Makefile.in` 的树也算"没有"（它们不在文件集合里） |
@@ -652,7 +671,7 @@ zsh 版用 `${var:h}` 取父目录，bash 版用 `${var%/*}` + `case`。
 ## 测试
 
 ```sh
-bash tests/env_test.sh     # 本机（WSL、rg + fd 都装了）：529 通过 / 0 失败（2026-10-09 实测）
+bash tests/env_test.sh     # 本机（WSL、rg + fd 都装了）：537 通过 / 0 失败（2026-10-09 实测）
                            # —— 条数随环境变（后端在不在、shell 在不在），以输出为准
                            # 没装 zsh 就只测 bash（会打印跳过）
 ```
@@ -664,9 +683,11 @@ bash tests/env_test.sh     # 本机（WSL、rg + fd 都装了）：529 通过 / 
 `win` 那一段与后端无关，只碰假夹具：`$T/winws/`（**故意不在 `/tmp` 下** —— macOS / Windows 上
 `/tmp` 是软链，`realpath -m` 会把 `/tmp/...` 折成 `/private/tmp/...`，share 的 `path` 就匹配不上）、
 假 `smb.conf`（`[proj]` / `[ws]` / 不匹配的 `[other]`）、假 `wslpath`（顺便把调用参数记进文件，
-"没被调用"才断言得出来）。15×2 条钉的是：五行齐全（`mac` = `smb://`、`win` = UNC、
-`linux` = `//`、`scp` = `user@ip:绝对路径`）、非 WSL 时 `wsl` 行是 `-`、
-**没 `WIN_IP` → 四行写 `请设置 WIN_IP` 且 stderr 为空、rc=0**、
+"没被调用"才断言得出来）。19×2 条（非 WSL 机器上 17×2：`wsl` 行那两条只在 WSL 上跑得到）钉的是：
+**WSL 上五行齐全**（`mac` = `smb://`、`win` = UNC、`linux` = `//`、`scp` = `user@ip:绝对路径`、
+`wsl` = `wslpath` 的结果），**非 WSL 上只有四行、整表逐行比对 + `grep -c '^wsl'` = 0**
+（没有 `wsl` 行）、
+**没 `WIN_IP` → 靠 IP 的四行写 `请设置 WIN_IP` 且 stderr 为空、rc=0**（`wsl` 行不靠 IP，WSL 上照给）、
 **读不到 / 不匹配 smb.conf → `mac`/`win`/`linux` 是 `-` 且 stderr 为空**、
 最长前缀 + 路径分隔符对齐（`ws/ab` 命中 `[ws]`）、`win <路径>` 对给定路径生效、
 `win -m` **不碰 `wslpath`**（假 `wslpath` 没被调用 + stdout 里没有 `Usage:`）、
