@@ -322,6 +322,68 @@ wtbl4 () {
     printf '%-5s  %s\n' linux "$4"
 }
 
+# ---- start 的用例辅助 -----------------------------------------------------
+# $T/startws：一棵小树 + 两个桩。**真 Windows 一次都不碰**：start 只跟
+# `wslpath` / `powershell.exe` 打交道，桩把它们收到的参数记下来 ——
+# 断言就是"到底把**哪条路径**交出去了"（软链那条还是软链的目标）。
+mkdir -p "$T/startws/dir" "$T/startws/bin"
+printf 'hi\n' > "$T/startws/dir/file.txt"
+ln -s dir          "$T/startws/linkdir"      # 软链 → 目录
+ln -s linkdir      "$T/startws/linklink"     # 多级软链 → 软链 → 目录（要一次解到底）
+ln -s dir/file.txt "$T/startws/linkfile"     # 软链 → 文件
+ln -s nowhere      "$T/startws/deadlink"     # 悬空软链：目标不存在
+cat > "$T/startws/bin/wslpath" <<'EOF'
+#!/bin/sh
+# 桩：先把收到的参数记一行；“翻译结果”里带上收到的路径 —— 这样 powershell 桩的
+# 日志就能反过来证明**哪条路径**被翻过去了（真实 wslpath 的行为不参与断言）。
+printf '%s\n' "$*" >> "$WSLPATH_LOG"
+printf 'WIN(%s)' "${2:-}"
+EOF
+cat > "$T/startws/bin/powershell.exe" <<'EOF'
+#!/bin/sh
+# 桩：只记命令行，什么都不启动。
+printf '%s\n' "$*" >> "$PS_LOG"
+exit 0
+EOF
+chmod +x "$T/startws/bin/wslpath" "$T/startws/bin/powershell.exe"
+# 期望值都用 realpath 现算：$T 自己带软链时（macOS 的 /tmp）也能对得上
+sws=$(realpath -m -- "$T/startws")
+sws_dir=$(realpath -m -- "$T/startws/dir")
+sws_file=$(realpath -m -- "$T/startws/dir/file.txt")
+sws_dead=$(realpath -m -- "$T/startws/nowhere")
+
+# oneline <文件>：把文件内容接成一行（多行之间用 | 连，**末尾不留 |**，
+# 期望值才好写）
+oneline () { tr '\n' '|' < "$1" | sed 's/|$//'; }
+
+# startrun <shell> <wsl|notwsl> <在哪个目录跑> [start 的实参…]
+#   跑一次 start，打印五行（多行值用 | 连）：
+#     rc= / out= / err= / wsl=（wslpath 桩收到的） / ps=（powershell 桩收到的）
+#   ⚠️ `this_is_not_wsl` 的桩必须写在 **source 之后** —— env 文件自己也定义这个
+#   函数（source 会把先定义的盖掉，2026-10-10 实测踩过）。
+startrun () {
+    local sh=$1 mode=$2 dir=$3; shift 3
+    local wl="$T/startws/wsl.log" pl="$T/startws/ps.log" rc stub args='' a
+    : > "$wl"; : > "$pl"
+    for a in "$@"; do args="$args $(printf '%q' "$a")"; done
+    stub='this_is_not_wsl () { return 1; }'
+    [ "$mode" = notwsl ] && stub='this_is_not_wsl () { return 0; }'
+    ( cd "$dir" && env -u WTOOL_PROJECT_ROOT -u WTOOL_PROJECT_ID \
+        WTOOL_PROJECT_DIR="$proj" WSLPATH_LOG="$wl" PS_LOG="$pl" \
+        "$sh" -c "PATH=$(printf '%q' "$T/startws/bin"):\$PATH
+            source $(printf '%q' "$proj/env.$sh")
+            $stub
+            start $args" ) > "$T/startws/out" 2> "$T/startws/err"
+    rc=$?
+    printf 'rc=%s\nout=%s\nerr=%s\nwsl=%s\nps=%s\n' "$rc" \
+        "$(oneline "$T/startws/out")" \
+        "$(oneline "$T/startws/err")" \
+        "$(oneline "$wl")" "$(oneline "$pl")"
+}
+# 只取其中一格（每次都会真跑一次 start，桩很便宜）
+startps ()  { startrun "$@" | sed -n 's/^ps=//p'; }
+startrc ()  { startrun "$@" | sed -n 's/^rc=//p'; }
+
 for sh in bash zsh; do
     if ! command -v "$sh" >/dev/null 2>&1; then
         echo "== env.$sh：跳过（没装 $sh）=="
@@ -403,6 +465,66 @@ for sh in bash zsh; do
                 *) bad "$sh：start 在没 compinit 的环境里没补全注册 [$out]" ;;
             esac ;;
     esac
+
+    # ---- start：交给 Windows 的必须是**真实路径**（软链先解析；2026-10-10 加）----
+    # 四类边界 + 三条不能破的老行为，全部用桩断言"到底把哪条路径交出去了"。
+    chk "$sh：start 软链目录（多级）→ wslpath 收到真实路径、powershell 收到它的 Windows 路径" \
+        "$(startrun "$sh" wsl "$T/startws" "$T/startws/linklink")" \
+        "rc=0
+out=
+err=
+wsl=-w ${sws_dir}|-w ${sws}
+ps=-Command Set-Location -Path \"WIN(${sws})\"; Start-Process \"WIN(${sws_dir})\""
+    chk "$sh：start 交出去的路径里**没有软链那一环**（反证：grep 不到 linklink / linkdir）" \
+        "$(startps "$sh" wsl "$T/startws" "$T/startws/linklink" | grep -c -e linklink -e linkdir || true)" \
+        "0"
+    chk "$sh：start 目录 → powershell 收到目录的真实路径" \
+        "$(startps "$sh" wsl "$T/startws" "$T/startws/dir")" \
+        "-Command Set-Location -Path \"WIN(${sws})\"; Start-Process \"WIN(${sws_dir})\""
+    chk "$sh：start 文件 → powershell 收到文件的真实路径" \
+        "$(startps "$sh" wsl "$T/startws" "$T/startws/dir/file.txt")" \
+        "-Command Set-Location -Path \"WIN(${sws})\"; Start-Process \"WIN(${sws_file})\""
+    chk "$sh：start 指向文件的软链 → 交给 Windows 的是目标文件" \
+        "$(startps "$sh" wsl "$T/startws" "$T/startws/linkfile")" \
+        "-Command Set-Location -Path \"WIN(${sws})\"; Start-Process \"WIN(${sws_file})\""
+    # 悬空软链 / 路径形状但不存在：报错 + rc 2，**一个桩都不调**
+    # （不把没影的路径丢给 Windows 去弹一个看不懂的框）
+    chk "$sh：start 悬空软链 → rc=2、报『软链的目标不存在』、两个桩都没被调" \
+        "$(startrun "$sh" wsl "$T/startws" "$T/startws/deadlink")" \
+        "rc=2
+out=
+err=start: 软链的目标不存在：$T/startws/deadlink -> ${sws_dead}
+wsl=
+ps="
+    chk "$sh：start 不存在的绝对路径 → rc=2、报『路径不存在』、两个桩都没被调" \
+        "$(startrun "$sh" wsl "$T/startws" "$T/startws/nope")" \
+        "rc=2
+out=
+err=start: 路径不存在：$T/startws/nope
+wsl=
+ps="
+    chk "$sh：start 不存在的相对路径（含 /）→ rc=2" \
+        "$(startrc "$sh" wsl "$T/startws" ./nope)" "2"
+    # 裸词 = 程序名：照旧原样透传（`start code` 不能被这次改动弄坏）
+    chk "$sh：start 裸词（code）→ 原样透传、当前目录照旧翻 Windows 路径" \
+        "$(startrun "$sh" wsl "$T/startws" code)" \
+        "rc=0
+out=
+err=
+wsl=-w ${sws}
+ps=-Command Set-Location -Path \"WIN(${sws})\"; Start-Process code"
+    # 非 WSL：老行为（stdout 一行 + rc 1），且不碰 powershell
+    chk "$sh：start（非 WSL）→ rc=1、stdout=only wsl support this、不碰两个桩" \
+        "$(startrun "$sh" notwsl "$T/startws" "$T/startws/linklink")" \
+        "rc=1
+out=only wsl support this
+err=
+wsl=
+ps="
+    # `cd` 进软链目录时 $PWD 是软链那条：Set-Location 拿到的也必须是真实路径
+    chk "$sh：start 的当前目录本身是软链时 → Set-Location 用真实路径" \
+        "$(startps "$sh" wsl "$T/startws/linkdir" .)" \
+        "-Command Set-Location -Path \"WIN(${sws_dir})\"; Start-Process \"WIN(${sws_dir})\""
 
     # ---- win：一张两列表格（无选项）；WSL 五行、非 WSL 四行（**没有 wsl 行**）----
     # 夹具在 $T/winws（见文件上方）：假 smb.conf + 假 wslpath，**不碰真 /etc/samba**。

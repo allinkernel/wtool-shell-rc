@@ -68,7 +68,7 @@
 | `this_is_wsl` | `[[ -e /usr/bin/wslpath ]]` | 0/1 |
 | `this_is_not_wsl` | 与 `this_is_wsl` 相反 | 0/1 |
 | `win [路径]` | 打一张两列表格（`mac` / `win` / `scp` / `linux` × 可用路径；**WSL 上多一行 `wsl`**，非 WSL 上那一行整行不显示）；**没有选项**（见 4.4） | 0 / 2（`-` 开头的参数） |
-| `start <程序>` | 非 WSL 打 `only wsl support this` 返回 1；WSL 上自己算 `wslpath -w "$PWD"`（失败退回 `$PWD`），再 `powershell.exe -Command "Set-Location -Path \"<那个路径>\"; Start-Process $1"` | 0 / 1 |
+| `start <程序>` / `start <路径>` | 非 WSL 打 `only wsl support this` 返回 1；WSL 上把参数（存在的话）`realpath -m` 解析到底 → `wslpath -w` → `powershell.exe -Command "Set-Location -Path \"<win cwd>\"; Start-Process <win 参数>"`；cwd 同样先 `realpath -m`（见 4.7） | 0 / 1（非 WSL）/ 2（路径不存在，见 4.7） |
 | `proxy_on [IP] [端口]` | 开代理：取值顺序 **参数 → `$PROXY_IP`/`$PROXY_PORT` → 交互式询问**（非交互终端且没值 → rc=2、不挂住）；导出 `http_proxy`/`https_proxy`/`all_proxy` 及其大写共 6 个；`no_proxy` 采取"存原值再追加"（见 4.6） | 0 / 2 |
 | `proxy_off` | 关代理：unset 那 6 个；把 `no_proxy`/`NO_PROXY` **还原**成 `proxy_on` 之前的值；保留 `PROXY_IP`/`PROXY_PORT`（同 shell 再开不用重问） | 0 |
 | `wrg [选项] <名字>` | 见 4.5（选项位置自由；`-i` / `-e` / `-t` / `-A` / `-B` / `-C` / `-l` / `-c` / `-m` / `--color`） | 0 / 1 / 2 |
@@ -444,9 +444,40 @@ done
 `WRG_PASS=paint`（没有上下文时）与 `ctx` pass 里的上色走的是同一套逻辑（都调 `cand()` +
 `hit()` 分两段），所以**加不加 `-A/-B/-C` 的命中行着色逐字一样**。
 
-### 4.6 `start` 的补全
+### 4.7 `start`：交给 Windows 的路径（软链先解析）+ 补全
 
-文件末尾按 shell 注册（不是按键绑定）：
+**为什么要有这一步**（2026-10-09 用户点名，2026-10-10 修）：Windows 跟不动 WSL 的软链 —— 真机实测，同一条软链
+在 Windows 侧是 `Attributes=ReparsePoint`、`LinkType` 与 `Target` 都为空的 reparse point
+（它认不出这是链接）；而改造前 `start` **只翻 cwd、参数原样透传**，于是
+`Start-Process /home/<user>/...` 传到 Windows 手里是个 Linux 路径，
+`Test-Path` 直接是 `False`（真机实测）—— 用户看到的"打不开"就是这个。
+
+现在的顺序（每一步都实测过）：
+
+1. `this_is_not_wsl` → 打印 + rc 1（**原有行为，没动**）；
+2. 判参数（判据只有 `[ -e ]` / `[ -L ]` 两个）：
+   - `[ -e ]` 真 → 路径：`realpath -m -- <参数>`（**多级软链一次解到底**；算不出来退回原参数）
+     → `wslpath -w`（算不出来退回那个真实路径）→ 用 `\"…\"` 包起来交给 `Start-Process`；
+   - `[ -L ]` 真而 `[ -e ]` 假 → 悬空软链：stderr 报 `start: 软链的目标不存在：<参数> -> <目标>`、
+     rc 2，**不调 `powershell.exe`**；
+   - 两个都假、但参数是路径形状（`*/*` / `.` / `..` / `~` 开头）→ stderr 报
+     `start: 路径不存在：<参数>`、rc 2，同样不往下走；
+   - 以上都不是（裸词，如 `code`）→ **原样透传**（`start code` 这条老用法不受影响）；
+3. cwd 也走 `realpath -m` → `wslpath -w`（`cd` 进软链目录时 `$PWD` 是软链那条，
+   `Set-Location` 一样不认）。
+
+**为什么存在性要自己判**：`realpath -m` **不检查存在性** —— 实测软链断了它照样返回目标
+路径、`rc=0`（`realpath -m dangling` → `/…/nowhere`）。所以"在不在"必须先由
+`[ -e ]` / `[ -L ]` 判定，判过之后 `-m` 才不会把没影的路径静默放行。
+
+**为什么不能只做其中一步**：光解析软链、不 `wslpath -w`（真机实测：`Test-Path` 仍是
+`False`），或者光 `wslpath -w`、不解析软链（本机 `wslpath` 顺手解了，但那是它的实现
+细节，不保证）—— 两步都要。
+
+两份 `env` 里 `start` 的**函数体逐字相同**（新代码只用 `[ ]` 和 `case`，连
+`[[ ]]` / `[ ]` 这点差异都没有）。
+
+补全（文件末尾按 shell 注册，不是按键绑定）：
 
 - `env.zsh`：`(( $+functions[compdef] ))` 为真 → `compdef _files start`；
   否则 `compctl -f start`；
@@ -460,7 +491,11 @@ done
   wrg 用的 `$T/src/{foo,bar}/Android.mk|Android.bp`、`$T/empty`、
   win 用的假工作区 `$T/winws/{ws/a/b,ws/ab}` + 假 `$T/winws/smb.conf` / `smb-nomatch.conf`
   + 假 `wslpath`（`$T/winws/bin/wslpath`，把调用参数记下来）；
-  **不碰真 `$HOME`、不碰 `/etc/samba`**；
+  start 用的 `$T/startws`（`dir/file.txt` + `linkdir` → `dir` + `linklink` → `linkdir`（多级）
+  + `linkfile` → `dir/file.txt` + `deadlink` → `nowhere`）+ 两个桩
+  `$T/startws/bin/{wslpath,powershell.exe}`（只记收到的参数，`wslpath` 桩回一个
+  `WIN(<收到的路径>)`，好让 powershell 桩的日志证明翻的是哪条路径）；
+  **不碰真 `$HOME`、不碰 `/etc/samba`、不碰真 Windows**；
 - wrg 三后端的夹具单独一棵树 `$T/src2`（`keep/Android.mk` 里放着 `liba+b` / `libaaab` 这种
   正则元字符陷阱、`keep/Android.bp`、以及只有 find 看得到的 `.hidden/Android.bp`），
   外加一组"只有一个可执行名的假 PATH"`$T/bin-{rg,fdfind,fd-find,fd,none}`（用来逼出探测顺序）；
@@ -579,12 +614,30 @@ done
   ⑦`win -m` **不碰 `wslpath`**（假 `wslpath` 没被调用 + stdout 里 `grep -ci usage|wslpath` = 0）、
   ⑧`win -h` / `--server` 只打用法、rc=2、stdout 空。整张表用 `wtbl` / `wtbl4` 里的同一个
   `printf '%-5s  %s\n'` 拼出来逐字比 —— 两个 shell 自然一致；
+- **start 的边界**（2026-10-10 加，夹具 `$T/startws`，两个 shell 各 11 条）：**不碰真 Windows**，
+  `wslpath` / `powershell.exe` 都是桩，断言的就是"交给 Windows 的到底是哪条路径"。
+  ①**软链目录（多级）**：整五行逐字比 —— `rc=0`、stderr 空、`wslpath` 桩收到
+  `-w <真实路径>` 与 `-w <真实 cwd>`、`powershell` 桩收到
+  `… Start-Process "WIN(<真实路径>)"`；②**反证**：那行日志里 `grep -c linklink|linkdir` = 0；
+  ③目录、④文件、⑤**指向文件的软链**（都断言 powershell 收到的是**目标的真实路径**）；
+  ⑥**悬空软链**：`rc=2` + `start: 软链的目标不存在：<参数> -> <目标>` + **两个桩都没被调**；
+  ⑦不存在的绝对路径、⑧不存在的相对路径（`./nope`）：`rc=2` + `start: 路径不存在：<参数>`
+  + 桩没被调；⑨**裸词 `code`**：原样透传（钉住"老用法不能被弄坏"）；
+  ⑩**非 WSL**：`rc=1` + stdout 一行 `only wsl support this` + 桩没被调；
+  ⑪**cwd 本身是软链**（`cd` 进 `linkdir` 再 `start .`）：`Set-Location` 用的是真实路径。
+  ⚠️ 桩 `this_is_not_wsl` 必须写在 **`source` 之后** —— env 文件自己也定义这个函数，
+  先定义会被盖掉（2026-10-09 实测踩过：表现为"非 WSL 那条静默走了 WSL 分支"）；
 - **反向验证**（2026-10-07 实测）：这一批新用例拿 `git show HEAD:env.zsh|env.bash`
   （改动前那份）跑，**150 条 FAIL**（当时新实现 499 通过 / 2 失败，那 2 条是当时本机
   `win | head -1` 的破管道老毛病 —— 2026-10-09 改成表格后那两个 `head` 流水线不存在了）；
+  同一手法 2026-10-09 又用了一次：start 那批拿 `b1df6c5` 的 env 跑 → **18 条 FAIL**
+  （22 条里剩下的 4 条是"裸词 `code`"和"非 WSL"各两份 —— 它们**有意**在改动前后都过）；
 - 后端相关的用例按"本机有没有那个可执行文件"跳过，所以条数随环境变：
-  同一个夹具下实测 **2026-10-09（非 WSL 不显示 `wsl` 行之后）rg+fd 都在 = 537 通过 / 0 失败**
+  同一个夹具下实测 **2026-10-10（start 边界那批之后）rg+fd 都在 = 559 通过 / 0 失败**
   （两个 shell 的用例表除了"start 的补全注册"那 3 条之外逐字相同）；
+  同一天早先（非 WSL 不显示 `wsl` 行之后）是 537 通过 / 0 失败；
   同一天早先（win 改成表格之后）是 529 通过 / 0 失败；
   2026-10-07（加完上下文与新选项之后）是 499 通过 / 2 失败；
   容器 `wrg-test` 里（非 WSL、mawk）是 **497 通过 / 0 失败**（**以脚本最后一行输出为准**）。
+  ⚠️ **调用者环境里的代理变量会漏进去**，让 4 条 `proxy_*` 用例挂掉（`_PROXY_NO_PROXY_SAVED`
+  被占、pty 那条不再询问）—— 干净复现见 README 的「测试」一节给的 `env -u …` 那行。

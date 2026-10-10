@@ -322,14 +322,71 @@ proxy_off ()
     return 0
 }
 
+# ---------------------------------------------------------------------------
+# start：在 Windows 侧打开程序 / 路径（只 WSL 有效）
+#
+#   start <路径>      文件、目录、软链都行 —— **软链先解析成真实路径**再交出去
+#   start <程序名>    裸词（当前目录下没这个东西，比如 code）原样透传给 Windows
+#
+#   为什么软链要自己解析（2026-10-09 用户点名，2026-10-10 修）：Windows 跟不动 WSL 的软链 ——
+#   对它是 Attributes=ReparsePoint、LinkType 为空的怪东西（实测），
+#   而 `wslpath -w` 只翻译路径、**不保证**解析软链（本机 WSL 上它顺手解了，
+#   但那是它的实现细节，不靠它）。所以软链必须在 Linux 侧用 `realpath -m`
+#   解析到底（多级软链一次解完），再把**真实路径**交给 wslpath -w + powershell.exe。
+#   转接给 Windows 的两段都这么处理：参数 + `Set-Location` 的当前目录
+#   （`win` 现在打的是整张表，不能再当"一行路径"用，所以路径都自己算）。
+#
+#   边界（判据 → 行为，用例见 tests/env_test.sh）：
+#     [ -e ] 真                   → 解析真实路径、翻成 Windows 路径交给 Start-Process
+#                                   （文件、目录一视同仁）
+#     [ -L ] 真 且 [ -e ] 真       → 同上；给 Windows 的是**软链的目标**，不是软链
+#     [ -L ] 真 且 [ -e ] 假       → stderr 报「软链的目标不存在」、rc 2，**不调 powershell**
+#     `*/*` / `.` / `..` / `~` 开头 但不存在的
+#                                 → stderr 报「路径不存在」、rc 2（别丢给 Windows 弹框）
+#     以上都不是（裸词，如 code）  → 原样透传（`start code` 不受影响）
+#
+#   ⚠️ 路径最后是拼进 powershell 的命令串里的（老机制，本次没动）：路径名里若带 `$`、
+#     `;`、反引号这类 PowerShell 元字符，仍可能被它解释。
+#   非 WSL：stdout 打 `only wsl support this`、rc 1（原有行为，没动）。
+#   **没有选项**：`-` 开头的一律不当选项（照上面几条判，判不出路径就当裸词透传）
+#   —— 2026-10-09 用户要求 start / win 都不要选项。
+# ---------------------------------------------------------------------------
 start ()
 {
     this_is_not_wsl && echo "only wsl support this" && return 1
-    # 自己算 Windows 路径：`win` 现在打的是整张表，不能再当"一行路径"用
-    local win_cwd
-    win_cwd=$(wslpath -w "$PWD" 2>/dev/null)
-    [ -n "${win_cwd}" ] || win_cwd="$PWD"
-    powershell.exe -Command "Set-Location -Path \"${win_cwd}\"; Start-Process $1"
+    local arg=${1:-} real win_arg win_cwd real_cwd dead
+    # 参数：存在的路径（软链也算存在）先解析成真实路径，再翻成 Windows 路径。
+    # `realpath -m` **不检查存在性**（实测：软链断了它照样返回目标路径、rc=0），
+    # 所以"在不在"必须自己先判。
+    if [ -e "$arg" ] || [ -L "$arg" ]; then
+        if [ ! -e "$arg" ]; then
+            # 软链指着的东西没了 —— 这条路径给 Windows 只会弹一个看不懂的框
+            dead=$(realpath -m -- "$arg" 2>/dev/null)
+            [ -n "${dead}" ] || dead=$(readlink -- "$arg" 2>/dev/null)
+            echo "start: 软链的目标不存在：${arg} -> ${dead}" >&2
+            return 2
+        fi
+        real=$(realpath -m -- "$arg" 2>/dev/null)
+        [ -n "${real}" ] || real="$arg"
+        win_arg=$(wslpath -w "${real}" 2>/dev/null)
+        [ -n "${win_arg}" ] || win_arg="${real}"
+        win_arg="\"${win_arg}\""
+    else
+        case $arg in
+            */*|.|..|'~'*)
+                echo "start: 路径不存在：${arg}" >&2
+                return 2 ;;
+            *)
+                win_arg="$arg" ;;   # 程序名（如 code）：原样透传，Windows 自己去找
+        esac
+    fi
+    # 当前目录也是交给 Windows 的一段（Set-Location）：cd 进软链目录时 $PWD 是软链
+    # 那条，同样得解析成真实路径。
+    real_cwd=$(realpath -m -- "$PWD" 2>/dev/null)
+    [ -n "${real_cwd}" ] || real_cwd="$PWD"
+    win_cwd=$(wslpath -w "${real_cwd}" 2>/dev/null)
+    [ -n "${win_cwd}" ] || win_cwd="${real_cwd}"
+    powershell.exe -Command "Set-Location -Path \"${win_cwd}\"; Start-Process ${win_arg}"
 }
 
 # ---------------------------------------------------------------------------

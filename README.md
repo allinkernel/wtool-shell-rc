@@ -56,7 +56,7 @@
 | `win` | 把目录翻成 mac / win / scp / linux 各自能用的路径（**WSL 上多一行 `wsl`**；一张两列表格） | `win` / `win <路径>` | `0` 正常（没设 `WIN_IP`、没配 samba 也是 `0`）；`2` 参数以 `-` 开头 |
 | `proxy_on` | 开代理：导出 6 个代理变量、追加 `no_proxy` | `proxy_on [IP] [端口]` | `0`；`2` 没值且不是交互终端、或端口不是数字 |
 | `proxy_off` | 关代理：清 6 个变量、**还原** `no_proxy` | `proxy_off` | `0` |
-| `start` | 在 Windows 侧 `Start-Process` 打开程序（**只 WSL 有效**） | `start <程序>` | `1` 非 WSL；WSL 上返回 `powershell.exe` 的码 |
+| `start` | 在 Windows 侧 `Start-Process` 打开程序 / 路径（**只 WSL 有效**；路径参数**先解析软链**再交出去） | `start <程序>` / `start <路径>` | `0` 正常（WSL 上等于 `powershell.exe` 的码）；`1` 非 WSL；`2` 是路径形状、但它（或软链的目标）不存在 |
 | `wrg` | 在当前目录树下找 `Android.bp` / `Android.mk` / `Makefile` 的目标名 | `wrg [选项] <名字>` / `wrg [选项] -e <名字> …` | `0` 有命中 / `-h` / `-v`；`1` 没命中或树下没有这三类文件；`2` 用法、选项、环境变量值不对 |
 | `_up_to_have_dir` | 从 `$PWD` 往上找含某名字的那层目录（`cw` 的基础，也能直接用） | `_up_to_have_dir <目录名>` | `0` 找到（把那一层打印出来）；`1` 一路到 `/` 都没有 |
 
@@ -334,22 +334,41 @@ $ echo $?
 `realpath` / `whoami` / `sed` / `awk`；`wsl` 那一行还要 `this_is_wsl` 为真且 `wslpath` 可用 ——
 **非 WSL 上这一行整行不显示**（不是给 `-`）。
 
-#### `start <程序>` —— 在 Windows 侧打开（只 WSL 有效）
+#### `start <程序>` / `start <路径>` —— 在 Windows 侧打开（只 WSL 有效）
 
-用 `powershell.exe` 在**当前目录的 Windows 路径**下 `Start-Process <程序>`；
+用 `powershell.exe` 在**当前目录的 Windows 路径**下 `Start-Process <东西>`；
 非 WSL 打印 `only wsl support this` 并返回 1。
 
-> 这个 Windows 路径由 `start` **自己**用 `wslpath -w "$PWD"` 算（算不出来退回 `$PWD`）——
+**软链会先被解析成真实路径**（2026-10-09 用户点名后修）：Windows 跟不动 WSL 的软链 ——
+在它眼里那是个 `Attributes=ReparsePoint`、`LinkType` 为空的 reparse point（真机实测）。
+所以路径参数先在本机用 `realpath -m` 解析到底（**多级软链一次解完**），再经 `wslpath -w`
+翻成 Windows 路径交给 Windows；`Set-Location` 用的当前目录同样这么处理。
+
+> 这两条 Windows 路径由 `start` **自己**算（算不出来退回本机路径）——
 > `win` 现在打的是整张表，不能再当"一行路径"来用（2026-10-09 改）。
 
 ```sh
-start .            # 在 Windows 资源管理器里打开当前目录
-start code         # 在 Windows 侧启动 VS Code
+start .                                 # 在 Windows 资源管理器里打开当前目录
+start code                              # 在 Windows 侧启动 VS Code
+start /home/me/.local/state/dsh-remote  # 软链：Windows 打开的是它指向的真实目录
 ```
 
+参数怎么判、几种边界各什么行为（判据就是 `[ -e ]` / `[ -L ]` 的返回值）：
+
+| 参数 | 判据 | 行为 |
+|---|---|---|
+| 文件 | `[ -e ]` 真 | 解析真实路径 → 翻成 Windows 路径 → `Start-Process`（默认程序打开） |
+| 目录 | `[ -e ]` 真 | 同上（资源管理器打开） |
+| 指向目录/文件的软链 | `[ -L ]` 真且 `[ -e ]` 真 | 同上；交给 Windows 的是**软链的目标**，不是软链本身（多级软链也一次解到底） |
+| 指向不存在的软链 | `[ -L ]` 真且 `[ -e ]` 假 | stderr 打 `start: 软链的目标不存在：<路径> -> <目标>`、返回 **`2`**，**不调 `powershell.exe`** |
+| 路径形状但不存在 | 含 `/`，或**正好**是 `.` / `..`，或以 `~` 开头 | stderr 打 `start: 路径不存在：<路径>`、返回 **`2`**，**不调 `powershell.exe`** |
+| 裸词（程序名，如 `code`） | 上面都不成立 | **原样透传**给 `Start-Process`（老行为不变） |
+
 **退出码 / 依赖**：非 WSL → stdout 打 `only wsl support this`、返回 **`1`**；
-WSL 上返回 `powershell.exe` 的退出码。依赖 `/usr/bin/wslpath`（判断 + 算路径）、
-`wslpath` 命令、`powershell.exe`（都在 WSL 里现成）。
+WSL 上返回 `powershell.exe` 的退出码；参数是路径形状却不存在 → 返回 **`2`**。
+依赖 `/usr/bin/wslpath`（判断 + 翻路径）、`wslpath` 命令、`realpath`、`powershell.exe`
+（都在 WSL 里现成）。**没有选项**：`-` 开头的不当选项 —— 照上面的表判，判不出路径就当裸词透传
+（`start` / `win` 都不带选项，2026-10-09 用户要求）。
 
 **路径补全**：`start <TAB>` 补当前目录的文件/目录名（以前只能先 `ls <TAB>` 再把
 `ls` 改成 `start`）：
@@ -638,6 +657,9 @@ zsh 版用 `${var:h}` 取父目录，bash 版用 `${var%/*}` + `case`。
 | `pdd` 跳到的不是我以为的目录 | 先 `pss` 看记着什么；`pdd` 读的就是 `/tmp/wsw-temp-pwd-id-$(id -u)`，同一用户其它终端敲过的 `pwd` 会把它覆盖 |
 | `pdd` 报 `cd: ... No such file` | 记下的那个目录已经被删了；`pss` 确认，然后重新 `pwd` 记一次 |
 | `start` 打印 `only wsl support this` 并返回 1 | 不在 WSL 上（没有 `/usr/bin/wslpath`）；`start` 本来就是给 WSL 用的 |
+| `start: 路径不存在：<路径>`（返回码 2） | 参数长得像路径（含 `/`，或正好是 `.` / `..`，或以 `~` 开头）却真的不存在。**这是故意的**：不把没影的路径丢给 Windows 去弹一个看不懂的框。想启动的其实是程序名（`code` 这种裸词）就直接写裸词，它原样透传 |
+| `start: 软链的目标不存在：<路径> -> <目标>`（返回码 2） | 参数是软链，但它的目标（可能要多跳几级）不存在 —— `[ -L ]` 真而 `[ -e ]` 假。先修软链（`ln -sfn` 指对地方）再用 `start` |
+| `start <软链>` 打开的目录/文件跟我写的那条路径名字不一样 | **正常**：`start` 会把软链解析成真实路径再交给 Windows（Windows 跟不动 WSL 的软链）。要确认解析成了什么：`realpath -m <路径>` |
 | `start <TAB>` 不补路径 | 看 shell 里有没有注册：bash `complete -p start`、zsh `print ${_comps[start]}`（应打 `_files`）/ `compctl -L start`（应打 `compctl -f start`）；都没有就是项目没装或没重开 shell |
 | `win` 表里 `mac` / `win` / `linux` 是 `-` | 这台机器没装/没配 samba（或当前目录不在任何 share 的 `path` 下面）。**这不报错**：没有 samba 自然不支持。要这三行就给 samba 配上 `[share]` + `path =`，或临时 `WTOOL_SMB_CONF=<别的文件>`；`scp` 行照样能用 |
 | `win` 表里四行写 `请设置 WIN_IP` | `WIN_IP` 没设。在 `.bashrc` / `.zshrc` 里 `export WIN_IP=<本机对外的地址>`（不探测是有意的：服务器上 `ip addr` 给的多半是内网地址；**也不默认成 `127.0.0.1`**，理由见上面 `win` 那一节）。`wsl` 行不受影响，它不靠 IP |
@@ -671,14 +693,23 @@ zsh 版用 `${var:h}` 取父目录，bash 版用 `${var%/*}` + `case`。
 ## 测试
 
 ```sh
-bash tests/env_test.sh     # 本机（WSL、rg + fd 都装了）：537 通过 / 0 失败（2026-10-09 实测）
+bash tests/env_test.sh     # 本机（WSL、rg + fd 都装了）：559 通过 / 0 失败（2026-10-10 实测）
                            # —— 条数随环境变（后端在不在、shell 在不在），以输出为准
+                           # ⚠️ 你 shell 里已有的代理变量会漏进去，让 4 条 proxy 用例挂掉；
+                           #    干净复现：env -u PROXY_IP -u PROXY_PORT -u _PROXY_NO_PROXY_SAVED \
+                           #      -u http_proxy -u https_proxy -u all_proxy -u HTTP_PROXY \
+                           #      -u HTTPS_PROXY -u ALL_PROXY -u no_proxy -u NO_PROXY bash tests/env_test.sh
                            # 没装 zsh 就只测 bash（会打印跳过）
 ```
 
 它把**同一张用例表**喂给两个 shell：别名在不在、`_up_to_have_dir` / `cw` 能不能找到
-`.repo`、`pdd`/`pss` 能不能跳回来、`start` 的补全注册、`win` 的**整张表**（下面单说）、
+`.repo`、`pdd`/`pss` 能不能跳回来、`start` 的补全注册 + **软链解析**（下面单说）、
+`win` 的**整张表**（下面单说）、
 以及 WSL 探测函数在**当前这台机器**上给不给对的返回码（本机是 WSL 就按 WSL 断言，不写死）。
+
+`start` 那批用例**不碰真 Windows**：把 `wslpath` / `powershell.exe` 换成两个桩（只记收到的
+参数），断言的就是"交给 Windows 的到底是哪条路径"—— 软链目录、文件、目录、悬空软链、
+不存在的路径、裸词程序名、当前目录本身是软链、非 WSL，两个 shell 各 11 条。
 
 `win` 那一段与后端无关，只碰假夹具：`$T/winws/`（**故意不在 `/tmp` 下** —— macOS / Windows 上
 `/tmp` 是软链，`realpath -m` 会把 `/tmp/...` 折成 `/private/tmp/...`，share 的 `path` 就匹配不上）、

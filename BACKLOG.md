@@ -8,6 +8,59 @@
 
 ---
 
+## ✅ `start` 打不开软链 —— 修（用户 2026-10-09 点名，2026-10-10 做完）
+
+**现象（用户原话 + 截图）**：`start /home/mindul/.local/state/dsh-remote` 打不开 ——
+那条路径是一条软链（`-> /home/mindul/.wtool/usr/var/dsh-remote`），Windows 侧不认这条软链。
+用户要求：**转接给真正 start 命令的一定要是真实存在的路径**。
+
+**根因（真机实测，不是猜的）**：`start` 只把 **cwd** 用 `wslpath -w` 翻成 Windows 路径，
+**参数原样透传** —— 于是 Windows 收到的是 Linux 路径 `/home/mindul/.local/state/dsh-remote`：
+真 `powershell.exe` 实测 `Test-Path` = **False**（Windows 那边没这个路径），`Start-Process`
+无从打开。就算 `.NET` 的 `GetFullPath` 把它折成
+`\\wsl.localhost\<distro>\…\.local\state\dsh-remote`，Windows 看到的也是
+`Attributes=ReparsePoint`、`LinkType`/`Target` **都为空**的 reparse point（它认不出这是链接）。
+**两个毛病叠在一起：软链没解析 + 参数没翻成 Windows 路径。**
+
+**修法**（`env.zsh` / `env.bash` 的函数体**逐字相同** —— 新代码只用 `[ ]` + `case`，
+连 `[[ ]]` / `[ ]` 这点差异都没有）：
+
+1. 参数按判据分流：`[ -e ]` 真 → `realpath -m`（**多级软链一次解到底**）→ `wslpath -w`
+   → 包好引号交给 `Start-Process`；`[ -L ]` 真而 `[ -e ]` 假（悬空软链）→ stderr 报
+   `start: 软链的目标不存在：<参数> -> <目标>` + **rc 2**，**不调 `powershell.exe`**；
+   路径形状（含 `/` 或 `.` / `..` / `~` 开头）但不存在 → stderr 报 `start: 路径不存在：<参数>`
+   + rc 2；裸词（`code`）→ **原样透传**（老用法不动）。
+2. `Set-Location` 用的 cwd 同样 `realpath -m`（`cd` 进软链目录时 `$PWD` 是软链那条）。
+3. 非 WSL 的「stdout 打 `only wsl support this` + rc 1」**没动**；**没加任何选项**
+   （用户之前明确要求 `start` / `win` 都不带选项）。
+4. 为什么存在性要自己判：`realpath -m` **不检查存在性**（实测 `realpath -m dangling` 照样返回
+   目标路径、rc 0），不先判就会把没影的路径静默放行。
+
+**判据（怎么验的，都能原地复现）**：
+
+- `bash tests/env_test.sh` → **559 通过 / 0 失败**（原 537；+22 = 两个 shell × 11 条 start 用例）。
+  用例把 `wslpath` / `powershell.exe` 换成桩、只记收到的参数，断言"交给 Windows 的到底是哪条
+  路径"，**不碰真 Windows**：软链目录（多级）、文件、目录、指向文件的软链、悬空软链、
+  不存在的绝对/相对路径、裸词 `code`、非 WSL、cwd 本身是软链；
+- **反证**：同一批用例拿改动前那一版（`b1df6c5`）的 env 跑 → **18 条 FAIL**
+  （22 条里剩下 4 条是"裸词 `code`"和"非 WSL"各两份 —— 它们**有意**在改动前后都过，
+  钉的就是"老行为不能被弄坏"）；
+- **真机端到端**（真 `wslpath` + 真 `powershell.exe`，没有桩）：`start <软链>` 之后用 COM
+  枚举 `Shell.Application.Windows()`，窗口地址 = `file://wsl.localhost/<distro>/tmp/startdemo/openme`
+  —— **落在真实目录上**，不是软链那层（窗口随后由 COM 关掉）；同一条真实路径在 Windows 侧
+  `Test-Path = True`、`Attributes = Directory`；
+- **显示效果**（改动前 / 改动后，哪段是桩哪段是真机都标了）整份存在 `/tmp/start-demo.txt`，
+  生成脚本 `/tmp/startdemo/gen.sh`（可重跑，"改动前"钉在 `b1df6c5`）。
+
+**没验到的（写清楚，别当成实测）**：用户截图里那个**弹窗本身没有复现** —— 量到的是它的成因
+（路径在 Windows 侧不存在 / 软链是不可解析的 reparse point）。"真 Windows 能不能打开"验到的是：
+`Start-Process` 真的开出了资源管理器窗口，且窗口落在真实目录上（COM 核查）。
+
+**顺手修的文档问题**：`architecture.md` 里 `### 4.6` 出现了两次（代理一节 + `start` 的补全一节）
+—— 把 `start` 那节改成 `### 4.7`（代理仍是 4.6，第 72 行"见 4.6"那条引用不受影响）。
+
+---
+
 ## ✅ `wrg` 加 rg/grep 风格选项（含 `-A/-B/-C` 上下文行）+ 选项位置自由 —— 做完（2026-10-07，提交 `24c38fe`）
 
 **需求（用户 2026-10-07）**：`wrg` 要像 rg/grep 那样有 `-A/-B/-C`（上下文行）、
