@@ -1,4 +1,4 @@
-# AGENTS.md（shell/zsh）
+# AGENTS.md（shell/shell-rc）
 
 > 给后续的 AI 助手看。用户级规则在 `~/.dsh/AGENTS.md`，工作区规则在根目录 `AGENTS.md`；
 > 本文件只讲**动这个仓库**必须知道的事。
@@ -36,7 +36,8 @@
     `grep -n '^[A-Za-z_][A-Za-z0-9_]* ()' env.zsh` 拿函数，逐个对 README。
 - **下载 / 发布类内容不写进 README**：放单独一页，README 里**只留一行链接**（放最后一节）。
   本仓库那一页是 **`docs/download.md`** —— 路径由引擎钉死（`wtool pack-release` 生成它并
-  提交进 Git：`bootstrap/docs/spec.md` 的 pack-release 一节、`bootstrap/lib/wtool_fs.sh`），
+  提交进 Git：`wtool-base-tools/docs/spec.md` 的 pack-release 一节、
+  `wtool-base-tools/lib/wtool_fs.sh`），
   所以**不要为了"根目录也该有个 download.md"另建一份**：引擎只重写 `docs/` 那份，
   根目录那份会烂在旧版本上，两处必然说两种话。
 - **进度不写进 README**（写 `BACKLOG.md`：做完什么、验证到什么程度、还差什么）；
@@ -57,12 +58,12 @@
   command not found"，而文件里看起来明明装过。
 - zsh 版允许用 zsh 专有语法（`${var:h}`、`funcstack`、`<->`……），bash 版**不行**
   （`${var%/*}` + `case`；别把三元运算符那类 bashism 写进 bash 版，`sh -n` 查不出来）。
-- `wtool.xml` 里**没有 `id=` 属性**：项目身份就是它在工作区里的路径 `shell/zsh`
-  （ADR-0037，写了 `id=` 引擎会硬报错）—— rc 文件的块名（`# >>> wtool:shell/zsh`）、
-  中转链接路径 `~/.wtool/wtool-work-dir/links/shell/zsh` 都用这个路径。改目录名要连带
+- `wtool.xml` 里**没有 `id=` 属性**：项目身份就是它在工作区里的路径 `shell/shell-rc`
+  （ADR-0037，写了 `id=` 引擎会硬报错）—— rc 文件的块名（`# >>> wtool:shell/shell-rc`）、
+  中转链接路径 `~/.wtool/wtool-work-dir/links/shell/shell-rc` 都用这个路径。改目录名要连带
   改文档，并走 `wtool move`（改名 = 卸载旧的 + 装新的）。
 - **装 / 测只在容器里做**：本机（WSL）是临时的手工环境，wtool 调通之前不在本地落地；
-  真机上 `wtool install shell/zsh` **必须由用户明确同意**（用户级 `~/.dsh/AGENTS.md` 的硬规矩）。
+  真机上 `wtool install shell/shell-rc` **必须由用户明确同意**（用户级 `~/.dsh/AGENTS.md` 的硬规矩）。
 - `priority=20`：必须排在 `shell/oh-my-zsh`(10) 之后 —— 主题/补全先就位，
   这里的别名才盖得住。别随手改优先级。
 - `WTOOL_PROJECT_DIR` 的默认值是给"单独 source 本项目"兜底的；

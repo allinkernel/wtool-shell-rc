@@ -7,7 +7,10 @@
 
   env.zsh / env.bash 内容等价（别名、cw、pdd/pss、WSL 那几个小工具），
   分别由 ~/.zshrc 和 ~/.bashrc 的 wtool 块 source。
-  路径（项目身份，ADR-0037）还叫 shell/zsh 只是历史原因，里面已经不是纯 zsh 了。
+  路径 = 项目身份（ADR-0037）。2026-10-13 由 `shell/zsh` 改名成 **`shell/shell-rc`**
+  （ADR-0045 §7.1）：里面本来就不只是 zsh（还有 bash 那一份），而且 `shell/zsh`
+  这个名字要让给第 ⑦ 块新增的 zsh **源码**项目。GitHub 同名改
+  `wtool-zsh` → `wtool-shell-rc`。
 -->
 <wtool schema="1" priority="20">
 

@@ -1,11 +1,11 @@
-# architecture —— shell/zsh（现状）
+# architecture —— shell/shell-rc（现状）
 
 > 这份文件只写**代码现在长什么样**：有哪些文件、里面有什么、怎么装、怎么测。
 > 为什么这么决策去 `docs/adr/`（本仓库没有 ADR），接下来做什么去 `BACKLOG.md`。
 
 ## 1. 这个项目是什么
 
-一组和具体项目无关的 shell 别名 / 函数。项目身份 = 工作区里的路径 `shell/zsh`
+一组和具体项目无关的 shell 别名 / 函数。项目身份 = 工作区里的路径 `shell/shell-rc`
 （`wtool.xml` 里**没有** `id=`），加载优先级 `priority=20`。
 
 **仓库里只有文本**：两个 rc 片段、一个测试、清单和文档，没有 `scripts/`，
@@ -23,8 +23,8 @@
 </wtool>
 ```
 
-- 引擎在 `~/.zshrc` / `~/.bashrc` 里写 `# >>> wtool:shell/zsh` 块，块里 source
-  `$HOME/.wtool/wtool-work-dir/links/shell/zsh/env.zsh`（bash 块对应 `env.bash`）；
+- 引擎在 `~/.zshrc` / `~/.bashrc` 里写 `# >>> wtool:shell/shell-rc` 块，块里 source
+  `$HOME/.wtool/wtool-work-dir/links/shell/shell-rc/env.zsh`（bash 块对应 `env.bash`）；
 - 块在 source 之前导出 `WTOOL_PROJECT_ID` / `WTOOL_PROJECT_DIR` / `WTOOL_PROJECT_ROOT`；
 - 没有任何 `<link>`：`$HOME` 里不留本项目自己的软链。
 
@@ -46,7 +46,7 @@
 
 ### 4.1 顶部固定动作（两份一样）
 
-- `WTOOL_PROJECT_DIR` 没设时给默认值 `$HOME/.wtool/wtool-work-dir/links/shell/zsh`；
+- `WTOOL_PROJECT_DIR` 没设时给默认值 `$HOME/.wtool/wtool-work-dir/links/shell/shell-rc`；
 - `export PATH=~/bin:$PATH`；`export LD_LIBRARY_PATH=~/usr/lib64`（覆盖式）；
 - `export TERM=xterm-256color`。
 
@@ -99,7 +99,7 @@
 判据（两 shell 同一张表，`tests/env_test.sh` 有 9×2 条）：
 
 ```sh
-R=~/self/wtool/shell/zsh
+R=~/self/wtool/shell/shell-rc
 for sh in bash zsh; do
   $sh -c ". $R/env.$sh
     proxy_on 10.1.2.3 8080 >/dev/null; echo "\$http_proxy|\$all_proxy"      # http://10.1.2.3:8080|socks5://10.1.2.3:8080

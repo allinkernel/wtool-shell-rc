@@ -1,9 +1,9 @@
 {
   "schema": 1,
-  "project": "shell/zsh",
-  "repo": "allinkernel/wtool-zsh",
+  "project": "shell/shell-rc",
+  "repo": "allinkernel/wtool-shell-rc",
   "tag": "ds_dev-2026-10-09",
-  "base_url": "https://github.com/allinkernel/wtool-zsh/releases/download/ds_dev-2026-10-09",
+  "base_url": "https://github.com/allinkernel/wtool-shell-rc/releases/download/ds_dev-2026-10-09",
   "commit": "14a0bf6f800aa9242922dd4a7eeb3b79f316e4d6",
   "packed_at": "2026-10-09T15:32:02+0800",
   "published_at": "2026-10-09T15:34:30+08:00",
@@ -36,5 +36,5 @@
       "sha256": "1d7127b5ec43a573ad7526efd73808cd365a26f34d6cc21bd0ecbe43f840d97a"
     }
   ],
-  "how": "wtool download-release shell/zsh   # 下到项目的 __release/（按本文件的 sha256 校验）\nwtool unpack-release shell/zsh     # 拼分卷 + 把源码铺回项目目录\nwtool install shell/zsh            # 装到本机"
+  "how": "wtool download-release shell/shell-rc   # 下到项目的 __release/（按本文件的 sha256 校验）\nwtool unpack-release shell/shell-rc     # 拼分卷 + 把源码铺回项目目录\nwtool install shell/shell-rc            # 装到本机"
 }

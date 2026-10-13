@@ -1,4 +1,4 @@
-# shell/zsh —— 个人 shell 别名与函数集合
+# shell/shell-rc —— 个人 shell 别名与函数集合
 
 一组**和具体项目无关**的 shell 小工具：跳到 repo 工作区根、记路径再跳回来、WSL 的
 `win` / `start`、当前目录树下找 `Android.bp` / `Android.mk` / **Makefile** 目标名的 `wrg`
@@ -11,8 +11,9 @@
 > 各干什么、怎么敲、什么退出码、依赖哪个变量，都在那里；后面几节是加载方式、安装、
 > 配置项、快捷键、排错、测试、文件。**发布产物 / 下载在最后一节**（只有一行链接）。
 
-- 项目路径（**路径就是它的身份**，没有单独的 `id`，见 ADR-0037）：`shell/zsh`
-  —— 名字是历史遗留，里面**已经不是纯 zsh 了**
+- 项目路径（**路径就是它的身份**，没有单独的 `id`，见 ADR-0037）：`shell/shell-rc`
+  —— 2026-10-13 由 `shell/zsh` 改名（ADR-0045 §7.1）：里面本来就不只是 zsh
+  （还有等价的 bash 那份），而 `shell/zsh` 这个名字要让给 zsh **源码**项目
 - 加载优先级：`priority=20`（在 `shell/oh-my-zsh`(10) 之后加载）
 - 本仓库**没有 `scripts/build.sh` / `scripts/install.sh`**（不需要构建/安装脚本）：
   装到 `$HOME` 里的只有 `env.zsh` / `env.bash` 两个文件的 rc 块，外加一个测试
@@ -96,7 +97,7 @@
   目标找得到。判据（只依赖 `/etc` 存在）：
 
   ```sh
-  R=~/self/wtool/shell/zsh
+  R=~/self/wtool/shell/shell-rc
   bash -c "export WTOOL_PROJECT_DIR=/x; cd /var/log; . $R/env.bash; _up_to_have_dir usr; echo rc=\$?"
   zsh  -c "export WTOOL_PROJECT_DIR=/x; cd /var/log; . $R/env.zsh;  _up_to_have_dir usr; echo rc=\$?"
   #   两份都打印 / 、rc=0
@@ -178,7 +179,7 @@ gba         # git branch -a，有 batcat 就 | batcat，否则 | cat
   所以即使 `git branch` 失败也常常是 `0`（git 自己的报错照打）。实测：
 
   ```sh
-  $ cd /tmp && bash -c '. ~/self/wtool/shell/zsh/env.bash; gba'; echo rc=$?
+  $ cd /tmp && bash -c '. ~/self/wtool/shell/shell-rc/env.bash; gba'; echo rc=$?
   fatal: not a git repository (or any of the parent directories): .git
   rc=0
   ```
@@ -306,7 +307,7 @@ linux  -
 
 ```sh
 T=$(mktemp -d); mkdir -p "$T/src/proj/sub"; printf '[proj]\n  path = %s/src/proj\n' "$T" > "$T/smb.conf"
-(cd "$T/src/proj/sub" && source ~/self/wtool/shell/zsh/env.zsh
+(cd "$T/src/proj/sub" && source ~/self/wtool/shell/shell-rc/env.zsh
  this_is_wsl () { return 1; }            # 在 WSL 机器上压出"非 WSL"那条分支
  WIN_IP=10.1.2.3 WTOOL_SMB_CONF=$T/smb.conf win)
 # usage  path
@@ -592,7 +593,7 @@ zsh 版用 `${var:h}` 取父目录，bash 版用 `${var%/*}` + `case`。
 > **改一个就要在另一个里做等价修改**，`tests/env_test.sh` 会用同一张用例表把两个 shell 都跑一遍。
 
 `wtool.xml` 里就是这么声明的（没有 `<link>`，全部靠注入 env 块提供；也**没有 `id=` 属性** ——
-项目身份就是相对工作区的路径 `shell/zsh`，写了 `id=` 反而会被引擎硬报错，见 ADR-0037）：
+项目身份就是相对工作区的路径 `shell/shell-rc`，写了 `id=` 反而会被引擎硬报错，见 ADR-0037）：
 
 ```xml
 <wtool schema="1" priority="20">
@@ -627,7 +628,7 @@ zsh 版用 `${var:h}` 取父目录，bash 版用 `${var%/*}` + `case`。
 
 | 变量 | 本仓库做什么 | 说明 |
 |---|---|---|
-| `WTOOL_PROJECT_DIR` | 没设时给默认值 `$HOME/.wtool/wtool-work-dir/links/shell/zsh` | 单独 source 本项目时也能用；正常由 wtool 块导出 |
+| `WTOOL_PROJECT_DIR` | 没设时给默认值 `$HOME/.wtool/wtool-work-dir/links/shell/shell-rc` | 单独 source 本项目时也能用；正常由 wtool 块导出 |
 | `WTOOL_PROJECT_ROOT` | `cw` 拿它当向上查找的起点 | 由 wtool 块导出（`readlink -f` 解析过中转链接的真实路径）；不设则 `cw` 用 `$PWD` |
 | `PATH` | 前面插一个 `~/bin` | `export PATH=~/bin:$PATH` |
 | `LD_LIBRARY_PATH` | **直接赋值**成 `~/usr/lib64` | 注意是覆盖不是追加：上层传进来的值会被顶掉 |

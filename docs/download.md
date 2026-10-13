@@ -1,21 +1,21 @@
-# 下载 shell/zsh
+# 下载 shell/shell-rc
 
 这一版：`ds_dev-2026-10-09`（2026-10-09）
 
 | 文件 | 大小 | 是什么 | 直链 |
 |---|---|---|---|
-| `dist.json` | 847B | — | https://github.com/allinkernel/wtool-zsh/releases/download/ds_dev-2026-10-09/dist.json |
-| `source-hash.txt` | 77B | — | https://github.com/allinkernel/wtool-zsh/releases/download/ds_dev-2026-10-09/source-hash.txt |
-| `source.zip` | 118.1K | 源码包 | https://github.com/allinkernel/wtool-zsh/releases/download/ds_dev-2026-10-09/source.zip |
+| `dist.json` | 847B | — | https://github.com/allinkernel/wtool-shell-rc/releases/download/ds_dev-2026-10-09/dist.json |
+| `source-hash.txt` | 77B | — | https://github.com/allinkernel/wtool-shell-rc/releases/download/ds_dev-2026-10-09/source-hash.txt |
+| `source.zip` | 118.1K | 源码包 | https://github.com/allinkernel/wtool-shell-rc/releases/download/ds_dev-2026-10-09/source.zip |
 
 ## 怎么装
 
 **装了 wtool 的机器**（推荐，校验和拼分卷它自己做）：
 
 ```sh
-wtool download-release shell/zsh   # 按仓库里提交的 scripts/release.json 下载 + 校验
-wtool unpack-release shell/zsh     # 拼分卷 + 把源码铺回项目目录
-wtool install shell/zsh            # 装到本机（登记、软链、shell 集成）
+wtool download-release shell/shell-rc   # 按仓库里提交的 scripts/release.json 下载 + 校验
+wtool unpack-release shell/shell-rc     # 拼分卷 + 把源码铺回项目目录
+wtool install shell/shell-rc            # 装到本机（登记、软链、shell 集成）
 ```
 
 **只有浏览器的机器**：把上面每个文件点下来，放进项目的 `__release/` 目录，

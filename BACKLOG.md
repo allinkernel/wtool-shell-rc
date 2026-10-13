@@ -1,4 +1,4 @@
-# BACKLOG —— shell/zsh
+# BACKLOG —— shell/shell-rc
 
 > 这个文件是这个项目"接下来做什么、做到哪了"的**唯一权威**。
 > 引擎/跨项目的事在 `~/self/wtool/harness/BACKLOG.md`，别混。
@@ -7,6 +7,27 @@
 > ❌ 不修（人已拍板不做，理由与留档写在条目里）
 
 ---
+
+## ✅ 改名：`shell/zsh` → `shell/shell-rc`（ADR-0045 §7.1，2026-10-13 做完）
+
+**改了什么**：GitHub 仓 `allinkernel/wtool-zsh` → `allinkernel/wtool-shell-rc`
+（`gh repo rename`，旧名 301 仍在）；工作区路径 `shell/zsh` → **`shell/shell-rc`**
+（清单 `.repo/manifests/default.xml` 的 `path`/`name` 已跟着改）。
+本仓内所有自指（`README.md` / `AGENTS.md` / `architecture.md` / `wtool.xml` /
+`env.zsh` / `env.bash` / `tests/env_test.sh` / `docs/download.md` /
+`scripts/release.json`）一起改完。
+
+**为什么**：里面本来就不只是 zsh（还有等价的 bash 那份），而且 `shell/zsh`
+这个名字要让给第 ⑦ 块新增的 zsh **源码**项目。
+
+**⚠️ 还没做的**：**本地目录改名 + `wtool move`**（`wtool move shell/zsh shell/shell-rc`）
+属于一次性切换 —— 它会改用户真账本 `~/.wtool`，本轮（2026-10-13）被明确禁止。
+在那之前，磁盘上仍然叫 `shell/zsh`，而文档/清单已经叫 `shell/shell-rc`。
+一次性切换要跑什么，见第 ⑥ 块报告和 `harness/BACKLOG.md`。
+
+**验证到哪一步**：`bash tests/env_test.sh` → **555 通过 / 4 失败**，与改动**前**在
+`git archive HEAD` 干净副本上跑出来的结果**逐条一致**（4 条都是 `proxy_on` 交互式
+询问那条 pty 用例，`期望 [8.8.8.8:8888] 实际 [127.0.0.1:78978888]`，与本轮改动无关）。
 
 ## ✅ `start` 打不开软链 —— 修（用户 2026-10-09 点名，2026-10-10 做完）
 
@@ -163,7 +184,7 @@
 **判据（可原地重跑）**：
 
 ```sh
-cd ~/self/wtool/shell/zsh && bash tests/env_test.sh        # 499 通过, 2 失败（2 条是 win 的老毛病）
+cd ~/self/wtool/shell/shell-rc && bash tests/env_test.sh        # 499 通过, 2 失败（2 条是 win 的老毛病）
 
 # 反向验证：新用例配改动前的实现（应当 351 通过 / 150 失败）
 rm -rf /tmp/oldimpl && mkdir /tmp/oldimpl &&
@@ -172,15 +193,15 @@ rm -rf /tmp/oldimpl && mkdir /tmp/oldimpl &&
   cp -r tests /tmp/oldimpl/ &&
   bash /tmp/oldimpl/tests/env_test.sh
 
-docker exec wrg-test bash -c 'bash /wtool/shell/zsh/tests/env_test.sh | tail -1'   # 497 通过, 0 失败
+docker exec wrg-test bash -c 'bash /wtool/shell/shell-rc/tests/env_test.sh | tail -1'   # 497 通过, 0 失败
 
 docker exec wrg-test bash -c 'cd /aosp/android16-release &&
-  WTOOL_PROJECT_DIR=/wtool/shell/zsh . /wtool/shell/zsh/env.bash
+  WTOOL_PROJECT_DIR=/wtool/shell/shell-rc . /wtool/shell/shell-rc/env.bash
   wrg system_image_defaults -A3'                           # 9 行，含一行 --（就是上面那段）
 
 # 三后端 cmp（纯文本）
 docker exec wrg-test bash -c 'cd /aosp/android16-release &&
-  WTOOL_PROJECT_DIR=/wtool/shell/zsh . /wtool/shell/zsh/env.bash
+  WTOOL_PROJECT_DIR=/wtool/shell/shell-rc . /wtool/shell/shell-rc/env.bash
   for v in auto rg fd find; do WRG_SEARCH=$v wrg -i systemimage -C1 > /tmp/c-$v.txt; done
   cmp /tmp/c-auto.txt /tmp/c-find.txt && cmp /tmp/c-rg.txt /tmp/c-find.txt &&
   cmp /tmp/c-fd.txt /tmp/c-find.txt && echo cmp-ok'
@@ -257,8 +278,8 @@ docker exec wrg-test bash -c 'cd /aosp/android16-release &&
 **判据（可原地重跑）**：
 
 ```sh
-cd ~/self/wtool/shell/zsh && bash tests/env_test.sh          # 299 通过, 2 失败（2 条是 win 的老毛病）
-docker exec wrg-test bash -lc 'cd /aosp/android16-release && source /wtool/shell/zsh/env.bash
+cd ~/self/wtool/shell/shell-rc && bash tests/env_test.sh          # 299 通过, 2 失败（2 条是 win 的老毛病）
+docker exec wrg-test bash -lc 'cd /aosp/android16-release && source /wtool/shell/shell-rc/env.bash
   NO_COLOR= WRG_COLOR=always wrg -i ystemim | cat -v | head -6'
 docker exec wrg-test bash /tmp/wrg6_cmp.sh                   # 三后端 cmp + ESC 计数（脚本在容器 /tmp 里）
 ```
@@ -365,10 +386,10 @@ docker exec wrg-test bash /tmp/wrg6_cmp.sh                   # 三后端 cmp + E
 **判据（可原地重跑）**：
 
 ```sh
-cd ~/self/wtool/shell/zsh && bash tests/env_test.sh          # 279 通过, 2 失败（2 条是 win 的老毛病）
-docker exec wrg-test bash -lc 'cd /aosp/android16-release && source /wtool/shell/zsh/env.bash
+cd ~/self/wtool/shell/shell-rc && bash tests/env_test.sh          # 279 通过, 2 失败（2 条是 win 的老毛病）
+docker exec wrg-test bash -lc 'cd /aosp/android16-release && source /wtool/shell/shell-rc/env.bash
   wrg system; echo rc=$?'                                     # 没有匹配 'system' 的目标名 / rc=1
-docker exec wrg-test bash -lc 'cd /aosp/android16-release && source /wtool/shell/zsh/env.bash
+docker exec wrg-test bash -lc 'cd /aosp/android16-release && source /wtool/shell/shell-rc/env.bash
   wrg -i vbmeta_systmmm'                                      # 三行表头 + main.mk:1383/1384
 bash /tmp/wrg_cmp.sh                                          # 三后端 cmp + 耗时（脚本在容器 /tmp 里）
 ```
@@ -475,12 +496,12 @@ bash /tmp/wrg_cmp.sh                                          # 三后端 cmp + 
 **判据（可原地重跑）**：
 
 ```sh
-cd ~/self/wtool/shell/zsh && bash tests/env_test.sh        # 199 通过, 0 失败
-docker exec wrg-test zsh -c 'export WTOOL_PROJECT_DIR=/wtool/shell/zsh;
-  . /wtool/shell/zsh/env.zsh; cd /aosp/android16-release;
+cd ~/self/wtool/shell/shell-rc && bash tests/env_test.sh        # 199 通过, 0 失败
+docker exec wrg-test zsh -c 'export WTOOL_PROJECT_DIR=/wtool/shell/shell-rc;
+  . /wtool/shell/shell-rc/env.zsh; cd /aosp/android16-release;
   for v in rg fd find; do WRG_SEARCH=$v wrg systemimage | md5sum; done'   # 三个 md5 一样
-docker exec wrg-test zsh -c 'export WTOOL_PROJECT_DIR=/wtool/shell/zsh;
-  . /wtool/shell/zsh/env.zsh; cd /aosp/android16-release;
+docker exec wrg-test zsh -c 'export WTOOL_PROJECT_DIR=/wtool/shell/shell-rc;
+  . /wtool/shell/shell-rc/env.zsh; cd /aosp/android16-release;
   NO_COLOR= WRG_COLOR=always wrg systemimage | cat -v | head -3'          # ^[[1;31msystemimage^[[0m
 ```
 
@@ -550,10 +571,10 @@ docker exec wrg-test zsh -c 'export WTOOL_PROJECT_DIR=/wtool/shell/zsh;
 **判据（可原地重跑）**：
 
 ```sh
-cd ~/self/wtool/shell/zsh && bash tests/env_test.sh          # 129 通过, 0 失败
+cd ~/self/wtool/shell/shell-rc && bash tests/env_test.sh          # 129 通过, 0 失败
 # 容器（工作区只读挂载，改完直接生效；容器里已经装了 ripgrep + fd-find）：
-docker exec wrg-test zsh -c 'export WTOOL_PROJECT_DIR=/wtool/shell/zsh;
-  . /wtool/shell/zsh/env.zsh; cd /aosp/android16-release;
+docker exec wrg-test zsh -c 'export WTOOL_PROJECT_DIR=/wtool/shell/shell-rc;
+  . /wtool/shell/shell-rc/env.zsh; cd /aosp/android16-release;
   for v in rg fd find; do WRG_SEARCH=$v wrg -i camera | md5sum; done'   # 三个 md5 一样
 docker exec wrg-test zsh /tmp/wrg_container_test.sh    # 上面那份完整对比脚本（含计时/高亮）
 ```
@@ -611,7 +632,7 @@ rg/fd 看得到 13,106 个 —— 差的两个是
   就补不出来，说明探针真的在测补全；
 - **容器验证**（2026-10-06，`ubuntu:24.04`、`--network=host`、工作区 `:ro` 挂载）：
   `bash container-raw.sh` → `./install.sh` → `eval "$(sh ~/.wtool/bootstrap/wtool.sh doctor --quiet)"`
-  （等价于 `exec $SHELL`）→ `wtool sudo-bootstrap` → `wtool install shell/zsh`
+  （等价于 `exec $SHELL`）→ `wtool sudo-bootstrap` → `wtool install shell/shell-rc`
   （**没有**跑 `wtool bootstrap`）。装出来的块 `head=a2077954e81d` 就是本提交。容器里：
   - `start li<TAB>` → `lib`（bash 和 zsh 都补出来；反证探针也跑了）；
   - `win`（容器不是 WSL）→ `//10.1.2.3/proj/sub` + `root@10.1.2.3:<目录>`、rc=0；
@@ -622,7 +643,7 @@ rg/fd 看得到 13,106 个 —— 差的两个是
 **判据（可原地重跑）**：
 
 ```sh
-cd ~/self/wtool/shell/zsh && bash tests/env_test.sh    # 67 通过, 0 失败
+cd ~/self/wtool/shell/shell-rc && bash tests/env_test.sh    # 67 通过, 0 失败
 ```
 
 ---
@@ -639,7 +660,7 @@ cd ~/self/wtool/shell/zsh && bash tests/env_test.sh    # 67 通过, 0 失败
 判据（只依赖 `/etc` 存在，只读、不碰 `$HOME`）：
 
 ```sh
-R=~/self/wtool/shell/zsh
+R=~/self/wtool/shell/shell-rc
 bash -c "export WTOOL_PROJECT_DIR=/x; cd /var/log; . $R/env.bash; _up_to_have_dir usr; echo rc=\$?"
 zsh  -c "export WTOOL_PROJECT_DIR=/x; cd /var/log; . $R/env.zsh;  _up_to_have_dir usr; echo rc=\$?"
 # 修前：bash 打印 / 、rc=0；zsh 打印空、rc=1
@@ -671,7 +692,7 @@ zsh  -c "export WTOOL_PROJECT_DIR=/x; cd /var/log; . $R/env.zsh;  _up_to_have_di
 ## ✅ 2026-10-07：`proxy_on` / `proxy_off` 从用户 .zshrc 搬进项目（值改成"问用户要"）
 
 - **需求**（用户原话大意）：把 `.zshrc` 里写死 `127.0.0.1:7897` 的 `proxy_on`/`proxy_off`
-  搬进 `shell/zsh`，**参考 `win` 的风格，操作前要求用户输入 `PROXY_IP` 和 `PROXY_PORT`**。
+  搬进 `shell/shell-rc`，**参考 `win` 的风格，操作前要求用户输入 `PROXY_IP` 和 `PROXY_PORT`**。
 - **实现**：两个 shell 文件里各加一节（**2810 字节逐字相同**）；取值顺序
   参数 → `$PROXY_IP`/`$PROXY_PORT` → 交互式询问；`[ -t 0 ]` 为假时 **rc=2 + 提示，绝不挂住**；
   端口非数字 rc=2；`all_proxy` 用 `socks5://`；`no_proxy` **存原值 + 追加**、`proxy_off` 还原；

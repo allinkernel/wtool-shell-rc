@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# shell/zsh 的 env 测试：env.zsh 和 env.bash 必须给同一批别名/函数，
+# shell/shell-rc 的 env 测试：env.zsh 和 env.bash 必须给同一批别名/函数，
 # 且核心函数（_up_to_have_dir / cw / pdd / WSL 那几个）在两个 shell 里行为一致。
 #
 #   bash tests/env_test.sh
