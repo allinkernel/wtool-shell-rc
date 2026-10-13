@@ -9,7 +9,7 @@
   改了 `env.zsh` / `env.bash` 里的别名、函数、报错文字、退出码、环境变量，都要回到
   README 里改对应那一行；加了新东西就补一行，删了就把那一行删掉。
 - **README 里不写"怎么装"** —— 安装统一由 wtool 管，README 的「安装」一节只有一句话
-  加一个链接，指向 GitHub 上的 wtool README（`allinkernel/wtool` 仓库的 `README.md`）。
+  加一个链接，指向 GitHub 上的 wtool README（`allinkernel/wtool-doc` 仓库的 `README.md`）。
   项目自己的 `install.sh` / `uninstall.sh` 已经退休，**别把它们写进文档**，
   也别在文档里叫用户直接跑（详见任务口径：以后安装强依赖 wtool）。
 - **README 的章节结构**（改动时保持这个骨架，别自创一套）：

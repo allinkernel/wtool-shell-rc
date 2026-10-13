@@ -611,7 +611,7 @@ zsh 版用 `${var:h}` 取父目录，bash 版用 `${var%/*}` + `case`。
 ## 安装（由 wtool 统一管）
 
 安装这件事不由本仓库负责：**统一走 wtool** ——
-见 [wtool 的 README（GitHub：allinkernel/wtool）](https://github.com/allinkernel/wtool/blob/main/README.md)。
+见 [wtool 的 README（GitHub：allinkernel/wtool-doc）](https://github.com/allinkernel/wtool-doc/blob/main/README.md)。
 本仓库只是源码/配置；装完之后 `~/.zshrc` / `~/.bashrc` 里会出现 wtool 写的块，
 块会 source 本项目的 `env.zsh` / `env.bash`，并在此之前导出
 `WTOOL_PROJECT_ID` / `WTOOL_PROJECT_DIR` / `WTOOL_PROJECT_ROOT`。
