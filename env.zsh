@@ -5,7 +5,9 @@
 
 # 这个脚本是给zsh去source的
 export PATH=~/bin:$PATH
-export LD_LIBRARY_PATH=~/usr/lib64
+# 2026-10-21：`~/usr` 这条链**不再建了**（装完只多 `.wtool/` 与 rc 两行）。
+# 库路径仍然指向影子 prefix —— 但它现在只住在 `$WTOOL_HOME/usr` 里。
+export LD_LIBRARY_PATH="${WTOOL_HOME:-$HOME/.wtool}/usr/lib64"
 
 
 # 设置终端颜色为256真彩色，否则vim等的主题显示会受影响
